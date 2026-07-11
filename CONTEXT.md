@@ -24,6 +24,10 @@ _Avoid_: Token delta, session score
 A user-facing classification of burn pace, including whether current consumption is likely to exhaust the allowance before the usage window ends.
 _Avoid_: Limit status, token alert
 
+**Usage tile**:
+One Stream Deck key that presents exactly one provider's usage window. A four-tile layout has separate keys for the five-hour and seven-day windows of Codex and Claude Code.
+_Avoid_: Provider summary tile, combined usage tile
+
 **Window keeping**:
 Automatic detection and prompt activation of an inactive usage window through a minimal agent interaction.
 _Avoid_: Dummy chat, warm-up, activation button, scheduled activation

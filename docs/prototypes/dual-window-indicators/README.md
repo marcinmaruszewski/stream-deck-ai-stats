@@ -2,7 +2,26 @@
 
 > Throwaway visual prototype for the map ticket **Prototype readable dual-window Stream Deck indicators**. It asks which information hierarchy is most legible on a Stream Deck key; it is not production artwork or an implementation specification.
 
-Each bitmap is rendered at high resolution for review, but deliberately uses only the large shapes and labels intended to survive a 72×72 px Stream Deck key: provider initial, usage progress, and the most urgent pace status.
+Each bitmap is rendered at high resolution for review, but deliberately uses only the large shapes and labels intended to survive a 72×72 px Stream Deck key.
+
+## Proposed direction — four usage tiles
+
+![Four usage tiles](four-usage-tiles.png)
+
+The layout uses four keys, not a combined provider summary:
+
+| Key | Usage window |
+| --- | --- |
+| Claude Code 5h | Claude Code short-term usage window |
+| Codex 5h | Codex short-term usage window |
+| Claude Code 7d | Claude Code long-term usage window |
+| Codex 7d | Codex long-term usage window |
+
+Every **usage tile** has the same independent reading order: provider and window in its header, usage progress in the ring, elapsed time as `elapsed/duration`, a reset countdown, and pace delta. There is no second provider or second usage window on a tile.
+
+The values in the mockup are illustrative. For example, `2h/5h`, `↻ 3h`, and `Δ −22pp` mean that 40% of a five-hour usage window has elapsed, it resets in three hours, and 62% usage is 22 percentage points ahead of elapsed time.
+
+## Rejected combined-key directions
 
 ## A — Split Ledger
 
@@ -28,6 +47,6 @@ This revision keeps the urgent provider as the primary radial reading while expo
 
 The pace-status arrow dominates the key, with the two provider values as bands. This favors an at-a-glance warning over accurate progress comparison.
 
-## Review prompt
+## Remaining review point
 
-Choose one direction, or name a combination of parts to keep. The decision should account for: provider identity, both usage windows, reset timing, usage progress, elapsed time, pace delta, stale/error states, and window-keeping activity. The next version will replace the illustrative `C`/`A` values with the provider-neutral domain model once that decision exists.
+The four-key composition resolves the information hierarchy. Confirm whether the per-tile reading order (progress → elapsed time → reset countdown → pace delta) is the intended direction; stale/error and window-keeping states still need a later visual treatment.
