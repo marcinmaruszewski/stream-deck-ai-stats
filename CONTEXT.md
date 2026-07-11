@@ -28,6 +28,10 @@ _Avoid_: Limit status, token alert
 One Stream Deck key that presents exactly one provider's usage window. A four-tile layout has separate keys for the five-hour and seven-day windows of Codex and Claude Code.
 _Avoid_: Provider summary tile, combined usage tile
 
+**Provider accent**:
+A low-contrast provider-specific background mark used only to help identify a usage tile. It does not convey usage progress or pace status.
+_Avoid_: Provider status color, provider alert color
+
 **Window keeping**:
 Automatic detection and prompt activation of an inactive usage window through a minimal agent interaction.
 _Avoid_: Dummy chat, warm-up, activation button, scheduled activation

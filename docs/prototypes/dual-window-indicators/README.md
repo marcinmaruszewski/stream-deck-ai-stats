@@ -6,7 +6,7 @@ Each bitmap is rendered at high resolution for review, but deliberately uses onl
 
 ## Proposed direction — four usage tiles
 
-![Four usage tiles](four-usage-tiles.png)
+![Four usage tiles with provider accents](four-usage-tiles-with-provider-accents.png)
 
 The layout uses four keys, not a combined provider summary:
 
@@ -18,6 +18,8 @@ The layout uses four keys, not a combined provider summary:
 | Codex 7d | Codex long-term usage window |
 
 Every **usage tile** has the same independent reading order: provider and window in its header, usage progress in the ring, elapsed time as `elapsed/duration`, a reset countdown, and pace delta. There is no second provider or second usage window on a tile.
+
+Provider identity is a low-contrast **provider accent** behind the information, not a status colour: Claude Code uses the orange robot mark and Codex uses the app mark. Green, amber, and red remain reserved for pace delta.
 
 The values in the mockup are illustrative. For example, `2h/5h`, `↻ 3h`, and `Δ −22pp` mean that 40% of a five-hour usage window has elapsed, it resets in three hours, and 62% usage is 22 percentage points ahead of elapsed time.
 
