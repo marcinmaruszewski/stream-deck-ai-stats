@@ -24,6 +24,10 @@ _Avoid_: Token delta, session score
 A user-facing classification of burn pace, including whether current consumption is likely to exhaust the allowance before the usage window ends.
 _Avoid_: Limit status, token alert
 
+**Pace accent**:
+The status color applied together to a usage tile's progress ring, large usage-progress value, and pace delta. It makes a pace status legible before its numeric details are read.
+_Avoid_: Provider color, decorative color
+
 **Usage tile**:
 One Stream Deck key that presents exactly one provider's usage window. A four-tile layout has separate keys for the five-hour and seven-day windows of Codex and Claude Code.
 _Avoid_: Provider summary tile, combined usage tile
