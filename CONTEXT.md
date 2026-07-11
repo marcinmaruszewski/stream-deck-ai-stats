@@ -16,6 +16,10 @@ _Avoid_: Token count, quota progress
 The relationship between elapsed time and usage progress that indicates whether the allowance is being consumed sustainably.
 _Avoid_: Burn rate, token speed
 
+**Pace delta**:
+The percentage-point difference between elapsed time in a usage window and usage progress. A positive value means usage is behind elapsed time; a negative value means usage is ahead of elapsed time.
+_Avoid_: Token delta, session score
+
 **Pace status**:
 A user-facing classification of burn pace, including whether current consumption is likely to exhaust the allowance before the usage window ends.
 _Avoid_: Limit status, token alert
