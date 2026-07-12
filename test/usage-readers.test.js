@@ -136,6 +136,12 @@ test("rejects Claude authentication, unsupported snapshots, and malformed snapsh
     snapshotPath: "/snapshot",
   });
   await assert.rejects(apiKey.read(), errorWithCode("authentication-required"));
+
+  const cloudProvider = createClaudeUsageReader({
+    transport: successTransport([], [{ exitCode: 0, stdout: JSON.stringify({ loggedIn: true, authMethod: "claude.ai", apiProvider: "bedrock" }), stderr: "" }], async () => "{}"),
+    snapshotPath: "/snapshot",
+  });
+  await assert.rejects(cloudProvider.read(), errorWithCode("authentication-required"));
 });
 
 test("preserves an aged Claude snapshot so the core exposes stale usage instead of inventing a reset", async () => {

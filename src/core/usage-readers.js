@@ -46,7 +46,8 @@ export function createClaudeUsageReader({ transport, snapshotPath, now = () => n
     async read() {
       const authentication = await execute("claude", ["auth", "status"], transport, "Claude");
       const authStatus = parseObject(authentication.stdout, "Claude authentication status");
-      if (authStatus.loggedIn !== true || authStatus.authMethod !== "claude.ai" || authStatus.apiProvider === "cloud" || authStatus.apiProvider === "apiKey") {
+      if (authStatus.loggedIn !== true || authStatus.authMethod !== "claude.ai"
+        || (authStatus.apiProvider !== undefined && authStatus.apiProvider !== "firstParty")) {
         throw new UsageReaderError("authentication-required", "Claude authentication is required");
       }
 
@@ -98,6 +99,7 @@ function successfulResult(result, provider) {
 async function readCodexRateLimits(transport, clientInfo) {
   const controller = new AbortController();
   let response;
+  let streamError;
   let resolveResponse;
   const receivedResponse = new Promise((resolve) => { resolveResponse = resolve; });
   let pendingLines = "";
@@ -106,7 +108,14 @@ async function readCodexRateLimits(transport, clientInfo) {
     const lines = pendingLines.split(/\r?\n/);
     pendingLines = lines.pop();
     for (const line of lines) {
-      const message = parseObject(line, "Codex app-server response");
+      let message;
+      try {
+        message = parseObject(line, "Codex app-server response");
+      } catch (error) {
+        streamError = error;
+        resolveResponse();
+        return;
+      }
       if (message.id === 1) {
         response = message;
         resolveResponse();
@@ -125,12 +134,13 @@ async function readCodexRateLimits(transport, clientInfo) {
     (error) => ({ error }),
   );
   const first = await Promise.race([
-    receivedResponse.then(() => ({ response })),
+    receivedResponse.then(() => ({ response, streamError })),
     completion,
   ]);
-  if (first.response) {
+  if (first.response || first.streamError) {
     controller.abort();
     await process.catch(() => undefined);
+    if (first.streamError) throw first.streamError;
     return validatedAppServerResponse(first.response);
   }
   if (first.error) {
