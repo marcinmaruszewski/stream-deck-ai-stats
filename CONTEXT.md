@@ -36,6 +36,10 @@ _Avoid_: Provider summary tile, combined usage tile
 A low-contrast provider-specific background mark used only to help identify a usage tile. It does not convey usage progress or pace status.
 _Avoid_: Provider status color, provider alert color
 
+**Operational badge**:
+A small top-right marker on a usage tile for an operational condition independent of pace status: red exclamation for error, pulsing blue reset mark for active window keeping, amber clock for stale data, or no badge when normal.
+_Avoid_: Pace badge, provider badge
+
 **Window keeping**:
 Automatic detection and prompt activation of an inactive usage window through a minimal agent interaction.
 _Avoid_: Dummy chat, warm-up, activation button, scheduled activation

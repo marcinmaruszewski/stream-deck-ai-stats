@@ -4,7 +4,7 @@
 
 Each bitmap is rendered at high resolution for review, but deliberately uses only the large shapes and labels intended to survive a 72×72 px Stream Deck key.
 
-## Proposed direction — four usage tiles
+## Selected direction — four usage tiles
 
 ![Four usage tiles with provider accents](four-usage-tiles-deterministic.svg)
 
@@ -53,6 +53,6 @@ This revision keeps the urgent provider as the primary radial reading while expo
 
 The pace-status arrow dominates the key, with the two provider values as bands. This favors an at-a-glance warning over accurate progress comparison.
 
-## Remaining review point
+## Validated outcome
 
-The four-key composition resolves the information hierarchy. Confirm whether the per-tile reading order (progress → reset countdown → pace delta) is the intended direction; stale/error and window-keeping states still need a later visual treatment.
+The four-key composition, reading order (progress → reset countdown → pace delta), provider accents, pace accents, and operational badges are accepted. This prototype now supplies the visual direction for implementation.
