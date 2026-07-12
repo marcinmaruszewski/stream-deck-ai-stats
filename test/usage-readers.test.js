@@ -98,9 +98,11 @@ test("reads and normalizes a Claude status-line snapshot after authentication pr
       assert.equal(path, "/private/claude-usage.json");
       return JSON.stringify({
         captured_at: "2026-07-13T11:57:00.000Z",
-        claude_code_version: "2.1.207",
-        five_hour: { used_percentage: 23.5, resets_at: 1_784_000_000 },
-        seven_day: { used_percentage: 41.2, resets_at: 1_784_500_000 },
+        version: "2.1.207",
+        rate_limits: {
+          five_hour: { used_percentage: 23.5, resets_at: 1_784_000_000 },
+          seven_day: { used_percentage: 41.2, resets_at: 1_784_500_000 },
+        },
       });
     }),
   });
@@ -191,6 +193,20 @@ test("rejects invalid non-null provider usage values instead of treating them as
     ]),
   });
   await assert.rejects(codex.read(), errorWithCode("malformed-data"));
+});
+
+test("surfaces safe usage-reader failure codes through plugin state", async () => {
+  const core = new PluginCore({
+    providers: [{
+      id: "codex",
+      usageReader: { read: async () => { throw new UsageReaderError("authentication-required", "private provider output"); } },
+    }],
+  });
+
+  await core.refreshProvider("codex");
+
+  assert.equal(core.stateFor("codex").errorCode, "authentication-required");
+  assert.equal(core.stateFor("codex").error, "Provider authentication is required");
 });
 
 function codexLimits() {

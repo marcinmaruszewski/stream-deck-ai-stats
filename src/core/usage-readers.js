@@ -58,12 +58,13 @@ export function createClaudeUsageReader({ transport, snapshotPath, now = () => n
         throw new UsageReaderError("snapshot-unavailable", "Claude usage snapshot is unavailable");
       }
       const snapshot = parseObject(rawSnapshot, "Claude usage snapshot");
-      requireSupportedVersion(snapshot.claude_code_version, CLAUDE_MINIMUM_VERSION, "Claude Code");
+      const windows = isObject(snapshot.rate_limits) ? snapshot.rate_limits : snapshot;
+      requireSupportedVersion(snapshot.claude_code_version ?? snapshot.version, CLAUDE_MINIMUM_VERSION, "Claude Code");
       const observedAt = dateOrError(snapshot.captured_at, "Claude usage snapshot");
 
       return [
-        claudeObservation("short-term", snapshot.five_hour, observedAt, now()),
-        claudeObservation("long-term", snapshot.seven_day, observedAt, now()),
+        claudeObservation("short-term", windows.five_hour, observedAt, now()),
+        claudeObservation("long-term", windows.seven_day, observedAt, now()),
       ].filter(Boolean);
     },
   });

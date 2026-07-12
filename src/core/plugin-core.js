@@ -82,7 +82,7 @@ export class PluginCore {
       });
       this.#publish({ provider: providerId, operationalState: "normal", windows });
     } catch (error) {
-      this.#publishFailure(providerId, "Usage observation unavailable");
+      this.#publishFailure(providerId, usageReadFailure(error));
     }
   }
 
@@ -172,13 +172,31 @@ export class PluginCore {
   }
 
   #publishFailure(providerId, error) {
+    const { error: previousError, errorCode: previousErrorCode, ...state } = this.stateFor(providerId);
+    const failure = typeof error === "string" ? { message: error } : error;
     this.#publish({
-      ...this.stateFor(providerId),
+      ...state,
       operationalState: "error",
-      windows: this.stateFor(providerId).windows.map(staleObservation),
-      error,
+      windows: state.windows.map(staleObservation),
+      error: failure.message,
+      ...(failure.code ? { errorCode: failure.code } : {}),
     });
   }
+}
+
+function usageReadFailure(error) {
+  const messages = {
+    "authentication-required": "Provider authentication is required",
+    "unsupported-version": "Provider version is unsupported",
+    "snapshot-unavailable": "Provider usage snapshot is unavailable",
+    "malformed-data": "Provider usage data was malformed",
+    "command-unavailable": "Provider CLI is unavailable",
+    "command-failed": "Provider usage command failed",
+  };
+  const code = error?.code;
+  return code && messages[code]
+    ? { code, message: messages[code] }
+    : { message: "Usage observation unavailable" };
 }
 
 function delay(milliseconds) {
