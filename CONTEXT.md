@@ -73,8 +73,12 @@ A small top-right marker on a usage tile for an operational condition independen
 _Avoid_: Pace badge, provider badge
 
 **Window keeping**:
-Automatic detection and prompt activation of an inactive usage window through a minimal agent interaction.
-_Avoid_: Dummy chat, warm-up, activation button, scheduled activation
+An explicitly user-requested minimal provider interaction. Its completion proves only that the interaction completed; it does not establish whether a usage window became active, reset, or was extended.
+_Avoid_: Dummy chat, warm-up, scheduled activation
+
+**Window-keeping action status**:
+The visible outcome of an explicitly requested window-keeping action: not enabled, requested, completed, or failed. It is separate from a window activity verdict and from the provider-reported usage observation.
+_Avoid_: Window state, activation result
 
 **Window activity verdict**:
 A provider-confirmed classification of a short-term usage window as `active`, `inactive`, or `unknown`; `unknown` never authorizes window keeping.
