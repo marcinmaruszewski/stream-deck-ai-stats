@@ -100,6 +100,17 @@ test("fails closed on an unknown window verdict and validates a minimal Codex tu
   assert.deepEqual(directories, ["/tmp/window-keeping-test"]);
 });
 
+test("classifies an unavailable Codex model without exposing command diagnostics", async () => {
+  const keeper = createCodexWindowKeeper({
+    usageReader: { read: async () => [] },
+    transport: { execute: async () => ({ exitCode: 1, stdout: "", stderr: "model gpt-example is not available" }) },
+    createWorkDirectory: async () => "/tmp/window-keeping-test",
+    removeWorkDirectory: async () => {},
+  });
+
+  assert.deepEqual(await keeper.keepWindow({ model: "gpt-example" }), { completed: false, errorCode: "model-unavailable" });
+});
+
 test("classifies unsupported, unauthenticated, and malformed Codex responses without exposing output", async () => {
   const unsupported = createCodexUsageReader({
     transport: successTransport([], [{ exitCode: 0, stdout: "codex-cli 0.143.9", stderr: "" }]),

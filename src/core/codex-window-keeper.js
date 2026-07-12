@@ -55,7 +55,9 @@ export function createCodexWindowKeeper({
 }
 
 function turnResult(result) {
-  if (result?.exitCode !== 0) return { completed: false };
+  if (result?.exitCode !== 0) {
+    return { completed: false, ...(hasUnavailableModelFailure(result.stdout, result.stderr) ? { errorCode: "model-unavailable" } : {}) };
+  }
   const events = String(result.stdout ?? "").split(/\r?\n/).filter(Boolean);
   let completed = false;
   for (const event of events) {
@@ -66,13 +68,14 @@ function turnResult(result) {
       return { completed: false };
     }
     if (message?.type === "turn.failed" || message?.type === "error") {
-      return { completed: false, ...(isModelFailure(message) ? { errorCode: "model-unavailable" } : {}) };
+      return { completed: false, ...(hasUnavailableModelFailure(message) ? { errorCode: "model-unavailable" } : {}) };
     }
     if (message?.type === "turn.completed") completed = true;
   }
   return { completed };
 }
 
-function isModelFailure(message) {
-  return /\bmodel\b/i.test(JSON.stringify(message));
+function hasUnavailableModelFailure(...values) {
+  const details = values.map((value) => typeof value === "string" ? value : JSON.stringify(value)).join("\n");
+  return /\bmodel\b.{0,80}\b(?:not available|unavailable|unsupported|not found|unknown|invalid)\b|\b(?:not available|unavailable|unsupported|not found|unknown|invalid)\b.{0,80}\bmodel\b/i.test(details);
 }
