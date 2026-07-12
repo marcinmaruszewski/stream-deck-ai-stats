@@ -72,6 +72,14 @@ _Avoid_: Pace badge, provider badge
 Automatic detection and prompt activation of an inactive usage window through a minimal agent interaction.
 _Avoid_: Dummy chat, warm-up, activation button, scheduled activation
 
+**Window activity verdict**:
+A provider-confirmed classification of a short-term usage window as `active`, `inactive`, or `unknown`; `unknown` never authorizes window keeping.
+_Avoid_: Inferred activity, progress-change signal
+
+**Window-keeping model**:
+The provider model selected for the minimal interaction that keeps a usage window active; it is independent of the model the user normally chooses.
+_Avoid_: Display model, default model
+
 **Private release**:
 An installable plugin package produced for personal use and optionally distributed through GitHub Releases, without marketplace publication.
 _Avoid_: Marketplace release, public release
