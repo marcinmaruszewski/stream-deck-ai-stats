@@ -6,7 +6,7 @@ Each bitmap is rendered at high resolution for review, but deliberately uses onl
 
 ## Proposed direction — four usage tiles
 
-![Four usage tiles with provider accents](four-usage-tiles-with-pace-accents.png)
+![Four usage tiles with provider accents](four-usage-tiles-deterministic.svg)
 
 The layout uses four keys, not a combined provider summary:
 
@@ -17,13 +17,13 @@ The layout uses four keys, not a combined provider summary:
 | Claude Code 7d | Claude Code long-term usage window |
 | Codex 7d | Codex long-term usage window |
 
-Every **usage tile** has the same independent reading order: provider and window in its header, usage progress in the ring, elapsed time as `elapsed/duration`, a reset countdown, and pace delta. There is no second provider or second usage window on a tile.
+Every **usage tile** has the same independent reading order: provider and window in its header, usage progress in the ring, a reset countdown, and pace delta. There is no second provider or second usage window on a tile. The raw elapsed/duration value is intentionally omitted because pace delta already compares elapsed time with usage progress.
 
-Provider identity is a low-contrast **provider accent** behind the information, not a status colour: Claude Code uses the orange robot mark and Codex uses the app mark. The LobeHub dark assets are retained in `provider-icons/`, sourced from [Claude Code](https://lobehub.com/icons/claudecode) and [Codex](https://lobehub.com/icons/codex).
+Provider identity is a low-contrast **provider accent** behind the information, not a status colour: Claude Code uses the orange robot mark and Codex uses the app mark. The SVG places their dark LobeHub assets from `provider-icons/` at the exact center of each tile, sourced from [Claude Code](https://lobehub.com/icons/claudecode) and [Codex](https://lobehub.com/icons/codex).
 
 The **pace accent** colors the progress ring, large usage-progress value, and pace delta together: green means the usage progress is behind elapsed time; amber/coral means it is ahead of elapsed time. This makes the urgent distinction visible without reading the delta.
 
-The values in the mockup are illustrative. For example, `2h/5h`, `↻ 3h`, and `Δ −22pp` mean that 40% of a five-hour usage window has elapsed, it resets in three hours, and 62% usage is 22 percentage points ahead of elapsed time.
+The values in the mockup are illustrative. For example, `↻ 3h` and `Δ −22pp` mean that the usage window resets in three hours and usage progress is 22 percentage points ahead of elapsed time.
 
 ## Rejected combined-key directions
 
@@ -53,4 +53,4 @@ The pace-status arrow dominates the key, with the two provider values as bands. 
 
 ## Remaining review point
 
-The four-key composition resolves the information hierarchy. Confirm whether the per-tile reading order (progress → elapsed time → reset countdown → pace delta) is the intended direction; stale/error and window-keeping states still need a later visual treatment.
+The four-key composition resolves the information hierarchy. Confirm whether the per-tile reading order (progress → reset countdown → pace delta) is the intended direction; stale/error and window-keeping states still need a later visual treatment.
