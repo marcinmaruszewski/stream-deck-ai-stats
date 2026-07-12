@@ -1,5 +1,3 @@
-import { readFile as readSnapshot } from "node:fs/promises";
-
 const CODEX_MINIMUM_VERSION = [0, 144, 1];
 const CLAUDE_MINIMUM_VERSION = [2, 1, 80];
 
@@ -25,8 +23,7 @@ export function createCodexUsageReader({ transport, now = () => new Date(), clie
       const version = await execute("codex", ["--version"], transport, "Codex");
       requireSupportedVersion(version.stdout, CODEX_MINIMUM_VERSION, "Codex");
 
-      const result = await execute("codex", ["app-server"], transport, "Codex", appServerRequest(clientInfo));
-      const response = appServerResponse(result.stdout);
+      const response = await readCodexRateLimits(transport, clientInfo);
       const snapshot = rateLimitSnapshot(response);
       return codexObservations(snapshot, now());
     },
@@ -38,24 +35,24 @@ export function createCodexUsageReader({ transport, now = () => new Date(), clie
  * collector. The snapshot remains a cache: its captured_at timestamp is kept
  * intact so PluginCore can mark aged data stale rather than inventing usage.
  */
-export function createClaudeUsageReader({ transport, snapshotPath, readFile = readSnapshot } = {}) {
+export function createClaudeUsageReader({ transport, snapshotPath, now = () => new Date() } = {}) {
   assertTransport(transport);
   if (typeof snapshotPath !== "string" || snapshotPath.length === 0) {
     throw new Error("Claude UsageReader requires a snapshot path");
   }
-  if (typeof readFile !== "function") throw new Error("Claude UsageReader requires a snapshot reader");
+  if (typeof transport.readFile !== "function") throw new Error("Claude UsageReader requires a snapshot-capable ProcessTransport");
 
   return Object.freeze({
     async read() {
       const authentication = await execute("claude", ["auth", "status"], transport, "Claude");
       const authStatus = parseObject(authentication.stdout, "Claude authentication status");
-      if (authStatus.loggedIn !== true) {
+      if (authStatus.loggedIn !== true || authStatus.authMethod !== "claude.ai" || authStatus.apiProvider === "cloud" || authStatus.apiProvider === "apiKey") {
         throw new UsageReaderError("authentication-required", "Claude authentication is required");
       }
 
       let rawSnapshot;
       try {
-        rawSnapshot = await readFile(snapshotPath, "utf8");
+        rawSnapshot = await transport.readFile(snapshotPath);
       } catch {
         throw new UsageReaderError("snapshot-unavailable", "Claude usage snapshot is unavailable");
       }
@@ -64,8 +61,8 @@ export function createClaudeUsageReader({ transport, snapshotPath, readFile = re
       const observedAt = dateOrError(snapshot.captured_at, "Claude usage snapshot");
 
       return [
-        claudeObservation("short-term", snapshot.five_hour, observedAt),
-        claudeObservation("long-term", snapshot.seven_day, observedAt),
+        claudeObservation("short-term", snapshot.five_hour, observedAt, now()),
+        claudeObservation("long-term", snapshot.seven_day, observedAt, now()),
       ].filter(Boolean);
     },
   });
@@ -83,14 +80,64 @@ async function execute(executable, args, transport, provider, input) {
   let result;
   try {
     result = await transport.execute({ executable, args, ...(input === undefined ? {} : { input }) });
-  } catch {
-    throw new UsageReaderError("command-unavailable", `${provider} CLI is unavailable`);
+  } catch (error) {
+    const code = error?.name === "ProcessTimeoutError" ? "command-failed" : "command-unavailable";
+    throw new UsageReaderError(code, code === "command-failed" ? `${provider} usage command timed out` : `${provider} CLI is unavailable`);
   }
+  return successfulResult(result, provider);
+}
+
+function successfulResult(result, provider) {
   if (result?.exitCode === 0) return result;
   if (authenticationSignal(`${result?.stdout ?? ""}\n${result?.stderr ?? ""}`)) {
     throw new UsageReaderError("authentication-required", `${provider} authentication is required`);
   }
   throw new UsageReaderError("command-failed", `${provider} usage command failed`);
+}
+
+async function readCodexRateLimits(transport, clientInfo) {
+  const controller = new AbortController();
+  let response;
+  let resolveResponse;
+  const receivedResponse = new Promise((resolve) => { resolveResponse = resolve; });
+  let pendingLines = "";
+  const onStdout = (chunk) => {
+    pendingLines += Buffer.from(chunk).toString("utf8");
+    const lines = pendingLines.split(/\r?\n/);
+    pendingLines = lines.pop();
+    for (const line of lines) {
+      const message = parseObject(line, "Codex app-server response");
+      if (message.id === 1) {
+        response = message;
+        resolveResponse();
+      }
+    }
+  };
+  const process = transport.execute({
+    executable: "codex",
+    args: ["app-server"],
+    input: appServerRequest(clientInfo),
+    signal: controller.signal,
+    onStdout,
+  });
+  const completion = process.then(
+    (result) => ({ result }),
+    (error) => ({ error }),
+  );
+  const first = await Promise.race([
+    receivedResponse.then(() => ({ response })),
+    completion,
+  ]);
+  if (first.response) {
+    controller.abort();
+    await process.catch(() => undefined);
+    return validatedAppServerResponse(first.response);
+  }
+  if (first.error) {
+    const code = first.error?.name === "ProcessTimeoutError" ? "command-failed" : "command-unavailable";
+    throw new UsageReaderError(code, code === "command-failed" ? "Codex usage command timed out" : "Codex CLI is unavailable");
+  }
+  return appServerResponse(successfulResult(first.result, "Codex").stdout);
 }
 
 function appServerRequest(clientInfo) {
@@ -110,6 +157,10 @@ function appServerResponse(stdout) {
     if (message.id === 1) response = message;
   }
   if (!response) throw new UsageReaderError("malformed-data", "Codex app-server did not return rate limits");
+  return validatedAppServerResponse(response);
+}
+
+function validatedAppServerResponse(response) {
   if (response.error) {
     if (authenticationSignal(JSON.stringify(response.error))) {
       throw new UsageReaderError("authentication-required", "Codex authentication is required");
@@ -151,21 +202,32 @@ function codexObservation(windowKind, window, observedAt) {
   });
 }
 
-function claudeObservation(windowKind, window, observedAt) {
+function claudeObservation(windowKind, window, observedAt, now) {
   if (window === null || window === undefined) return null;
   if (!isObject(window)) throw new UsageReaderError("malformed-data", "Claude usage window was malformed");
+  const resetAt = unixTimestamp(window.resets_at);
   return providerObservation({
     provider: "claude",
     windowKind,
     usageProgress: percentage(window.used_percentage),
-    resetAt: unixTimestamp(window.resets_at),
+    resetAt,
     observedAt,
     durationMs: null,
+    awaitingFreshObservation: resetAt !== null && now.getTime() >= resetAt.getTime(),
   });
 }
 
-function providerObservation({ provider, windowKind, usageProgress, resetAt, observedAt, durationMs }) {
-  return { provider, windowKind, usageProgress, resetAt, observedAt, durationMs, provenance: "provider-reported" };
+function providerObservation({ provider, windowKind, usageProgress, resetAt, observedAt, durationMs, awaitingFreshObservation = false }) {
+  return {
+    provider,
+    windowKind,
+    usageProgress,
+    resetAt,
+    observedAt,
+    durationMs,
+    ...(awaitingFreshObservation ? { awaitingFreshObservation: true } : {}),
+    provenance: "provider-reported",
+  };
 }
 
 function parseObject(text, source) {
@@ -206,17 +268,23 @@ function dateOrError(value, source) {
 }
 
 function unixTimestamp(value) {
-  return typeof value === "number" && Number.isFinite(value) && value > 0 ? new Date(value * 1_000) : null;
+  if (value === null || value === undefined) return null;
+  if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) throw new UsageReaderError("malformed-data", "Provider usage data was malformed");
+  return new Date(value * 1_000);
 }
 
 function minutes(value) {
-  return typeof value === "number" && Number.isFinite(value) && value > 0 ? value * 60_000 : null;
+  if (value === null || value === undefined) return null;
+  if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) throw new UsageReaderError("malformed-data", "Provider usage data was malformed");
+  return value * 60_000;
 }
 
 function percentage(value) {
-  return typeof value === "number" && Number.isFinite(value) && value >= 0 && value <= 100
-    ? Math.round((value / 100) * 1_000_000) / 1_000_000
-    : null;
+  if (value === null || value === undefined) return null;
+  if (typeof value !== "number" || !Number.isFinite(value) || value < 0 || value > 100) {
+    throw new UsageReaderError("malformed-data", "Provider usage data was malformed");
+  }
+  return Math.round((value / 100) * 1_000_000) / 1_000_000;
 }
 
 function authenticationSignal(value) {

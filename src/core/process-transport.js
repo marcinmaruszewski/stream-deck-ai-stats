@@ -1,4 +1,5 @@
 import { spawn as nodeSpawn } from "node:child_process";
+import { readFile as nodeReadFile } from "node:fs/promises";
 
 const DEFAULT_TIMEOUT_MS = 30_000;
 
@@ -18,14 +19,23 @@ export function createPlatformProcessTransport({
   wsl = {},
   defaultTimeoutMs = DEFAULT_TIMEOUT_MS,
   spawn = nodeSpawn,
+  readFile = nodeReadFile,
 } = {}) {
-  validateConfiguration({ platform, mode, executableOverrides, environment, inheritedEnv, wsl, defaultTimeoutMs, spawn });
+  validateConfiguration({ platform, mode, executableOverrides, environment, inheritedEnv, wsl, defaultTimeoutMs, spawn, readFile });
   const activeChildren = new Set();
+  const execute = (command) => {
+    const invocation = commandFor({ platform, mode, executableOverrides, environment, inheritedEnv, wsl, command });
+    return runProcess({ ...invocation, timeoutMs: command.timeoutMs ?? defaultTimeoutMs, signal: command.signal, onStdout: command.onStdout, spawn, activeChildren });
+  };
 
   return Object.freeze({
-    execute(command) {
-      const invocation = commandFor({ platform, mode, executableOverrides, environment, inheritedEnv, wsl, command });
-      return runProcess({ ...invocation, timeoutMs: command.timeoutMs ?? defaultTimeoutMs, signal: command.signal, spawn, activeChildren });
+    execute,
+    async readFile(path) {
+      if (!nonEmptyString(path)) throw new Error("ProcessTransport snapshot path must be a path");
+      if (mode !== "wsl") return readFile(path, "utf8");
+      const result = await execute({ executable: "cat", args: [path] });
+      if (result.exitCode !== 0) throw new ProcessTransportError("Unable to read WSL usage snapshot");
+      return result.stdout;
     },
     async recover() {
       await Promise.all([...activeChildren].map((child) => terminate(child)));
@@ -33,7 +43,7 @@ export function createPlatformProcessTransport({
   });
 }
 
-function validateConfiguration({ platform, mode, executableOverrides, environment, inheritedEnv, wsl, defaultTimeoutMs, spawn }) {
+function validateConfiguration({ platform, mode, executableOverrides, environment, inheritedEnv, wsl, defaultTimeoutMs, spawn, readFile }) {
   if (!supportedPlatform(platform)) throw new Error("ProcessTransport supports Windows and macOS only");
   if (mode !== "native" && mode !== "wsl") throw new Error("ProcessTransport mode must be native or wsl");
   if (mode === "wsl" && platform !== "win32") throw new Error("WSL ProcessTransport requires Windows");
@@ -45,6 +55,7 @@ function validateConfiguration({ platform, mode, executableOverrides, environmen
   }
   if (!Number.isFinite(defaultTimeoutMs) || defaultTimeoutMs <= 0) throw new Error("ProcessTransport timeout must be positive");
   if (typeof spawn !== "function") throw new Error("ProcessTransport requires a spawn function");
+  if (typeof readFile !== "function") throw new Error("ProcessTransport requires a snapshot reader");
 }
 
 function commandFor({ platform, mode, executableOverrides, environment, inheritedEnv, wsl, command }) {
@@ -54,6 +65,9 @@ function commandFor({ platform, mode, executableOverrides, environment, inherite
   if (command.cwd !== undefined && !nonEmptyString(command.cwd)) throw new Error("ProcessTransport command working directory must be a path");
   if (command.input !== undefined && typeof command.input !== "string" && !Buffer.isBuffer(command.input)) {
     throw new Error("ProcessTransport command input must be text or a Buffer");
+  }
+  if (command.onStdout !== undefined && typeof command.onStdout !== "function") {
+    throw new Error("ProcessTransport stdout callback must be a function");
   }
 
   const executable = executableOverrides[command.executable] ?? command.executable;
@@ -90,7 +104,7 @@ function environmentArguments(environment) {
   });
 }
 
-function runProcess({ executable, args, options, input, timeoutMs, signal, spawn, activeChildren }) {
+function runProcess({ executable, args, options, input, timeoutMs, signal, onStdout, spawn, activeChildren }) {
   if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) return Promise.reject(new Error("ProcessTransport command timeout must be positive"));
   if (signal?.aborted) return Promise.reject(abortError());
 
@@ -114,7 +128,11 @@ function runProcess({ executable, args, options, input, timeoutMs, signal, spawn
     try {
       child = spawn(executable, args, options);
       activeChildren.add(child);
-      child.stdout?.on("data", (chunk) => stdout.push(Buffer.from(chunk)));
+      child.stdout?.on("data", (chunk) => {
+        const text = Buffer.from(chunk);
+        stdout.push(text);
+        onStdout?.(text);
+      });
       child.stderr?.on("data", (chunk) => stderr.push(Buffer.from(chunk)));
       child.once("error", (error) => finish(reject, new ProcessTransportError(`Unable to start ${executable}`, { cause: error })));
       child.once("close", (exitCode, exitSignal) => finish(resolve, {

@@ -11,10 +11,11 @@ export function createProviderAdapter({ id, usageReader, windowKeeper, transport
   return Object.freeze({ id, usageReader, windowKeeper, transport, recover: recovery });
 }
 
-export function createProcessTransport({ execute, recover } = {}) {
+export function createProcessTransport({ execute, recover, readFile } = {}) {
   if (typeof execute !== "function") throw new Error("ProcessTransport requires an execute function");
   if (recover && typeof recover !== "function") throw new Error("ProcessTransport recovery must be a function");
-  return Object.freeze({ execute, recover });
+  if (readFile && typeof readFile !== "function") throw new Error("ProcessTransport snapshot reader must be a function");
+  return Object.freeze({ execute, recover, readFile });
 }
 
 export function providerCapabilities(adapter) {

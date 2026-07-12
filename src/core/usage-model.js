@@ -8,7 +8,8 @@ export function normalizeObservation(input, { now, freshnessMs }) {
   const resetAt = asDate(input.resetAt);
   const usageProgress = validProgress(input.usageProgress) ? input.usageProgress : null;
   const durationMs = validDuration(input.durationMs) ? input.durationMs : null;
-  const quality = observationQuality({ usageProgress, observedAt, resetAt, durationMs, now, freshnessMs });
+  const awaitingFreshObservation = input.awaitingFreshObservation === true;
+  const quality = observationQuality({ usageProgress, observedAt, resetAt, awaitingFreshObservation, now, freshnessMs });
 
   return {
     provider: input.provider,
@@ -17,6 +18,7 @@ export function normalizeObservation(input, { now, freshnessMs }) {
     resetAt,
     observedAt,
     durationMs,
+    ...(awaitingFreshObservation ? { awaitingFreshObservation: true } : {}),
     provenance: input.provenance ?? "provider-reported",
     quality,
     forecast: forecastFor({ usageProgress, resetAt, observedAt, durationMs, quality, now }),
@@ -27,11 +29,12 @@ export function staleObservation(observation) {
   return { ...observation, quality: "stale", forecast: unknownForecast() };
 }
 
-function observationQuality({ usageProgress, observedAt, resetAt, durationMs, now, freshnessMs }) {
+function observationQuality({ usageProgress, observedAt, resetAt, awaitingFreshObservation, now, freshnessMs }) {
   if (usageProgress === null || observedAt === null || resetAt === null) {
     return "incomplete";
   }
 
+  if (awaitingFreshObservation) return "stale";
   return now.getTime() - observedAt.getTime() > freshnessMs ? "stale" : "fresh";
 }
 

@@ -43,6 +43,30 @@ test("falls back to Codex rateLimits and retains incomplete provider data", asyn
   assert.deepEqual(await reader.read(), [observation("codex", "short-term", 0.25, null, null)]);
 });
 
+test("stops Codex app-server as soon as the rate-limit response arrives", async () => {
+  let aborted = false;
+  const reader = createCodexUsageReader({
+    transport: {
+      execute(command) {
+        if (command.args[0] === "--version") return Promise.resolve({ exitCode: 0, stdout: "0.144.1", stderr: "" });
+        return new Promise((resolve, reject) => {
+          command.signal.addEventListener("abort", () => {
+            aborted = true;
+            reject(new DOMException("Process execution was cancelled", "AbortError"));
+          }, { once: true });
+          command.onStdout(Buffer.from(`${JSON.stringify({ id: 1, result: { rateLimits: codexLimits() } })}\n`));
+        });
+      },
+    },
+    now: () => NOW,
+  });
+
+  const observations = await reader.read();
+
+  assert.equal(aborted, true);
+  assert.equal(observations.length, 2);
+});
+
 test("classifies unsupported, unauthenticated, and malformed Codex responses without exposing output", async () => {
   const unsupported = createCodexUsageReader({
     transport: successTransport([], [{ exitCode: 0, stdout: "codex-cli 0.143.9", stderr: "" }]),
@@ -69,18 +93,16 @@ test("classifies unsupported, unauthenticated, and malformed Codex responses wit
 test("reads and normalizes a Claude status-line snapshot after authentication preflight", async () => {
   const calls = [];
   const reader = createClaudeUsageReader({
-    transport: successTransport(calls, [{ exitCode: 0, stdout: JSON.stringify({ loggedIn: true }), stderr: "" }]),
     snapshotPath: "/private/claude-usage.json",
-    readFile: async (path, encoding) => {
+    transport: successTransport(calls, [{ exitCode: 0, stdout: JSON.stringify({ loggedIn: true, authMethod: "claude.ai" }), stderr: "" }], async (path) => {
       assert.equal(path, "/private/claude-usage.json");
-      assert.equal(encoding, "utf8");
       return JSON.stringify({
         captured_at: "2026-07-13T11:57:00.000Z",
         claude_code_version: "2.1.207",
         five_hour: { used_percentage: 23.5, resets_at: 1_784_000_000 },
         seven_day: { used_percentage: 41.2, resets_at: 1_784_500_000 },
       });
-    },
+    }),
   });
 
   assert.deepEqual(await reader.read(), [
@@ -92,36 +114,38 @@ test("reads and normalizes a Claude status-line snapshot after authentication pr
 
 test("rejects Claude authentication, unsupported snapshots, and malformed snapshots without leaking data", async () => {
   const unauthenticated = createClaudeUsageReader({
-    transport: successTransport([], [{ exitCode: 0, stdout: JSON.stringify({ loggedIn: false, email: "private@example.com" }), stderr: "" }]),
+    transport: successTransport([], [{ exitCode: 0, stdout: JSON.stringify({ loggedIn: false, email: "private@example.com" }), stderr: "" }], async () => "{}"),
     snapshotPath: "/snapshot",
-    readFile: async () => "{}",
   });
   await assert.rejects(unauthenticated.read(), errorWithCode("authentication-required", "private@example.com"));
 
   const unsupported = createClaudeUsageReader({
-    transport: successTransport([], [{ exitCode: 0, stdout: JSON.stringify({ loggedIn: true }), stderr: "" }]),
+    transport: successTransport([], [{ exitCode: 0, stdout: JSON.stringify({ loggedIn: true, authMethod: "claude.ai" }), stderr: "" }], async () => JSON.stringify({ captured_at: NOW.toISOString(), claude_code_version: "2.1.79" })),
     snapshotPath: "/snapshot",
-    readFile: async () => JSON.stringify({ captured_at: NOW.toISOString(), claude_code_version: "2.1.79" }),
   });
   await assert.rejects(unsupported.read(), errorWithCode("unsupported-version"));
 
   const malformed = createClaudeUsageReader({
-    transport: successTransport([], [{ exitCode: 0, stdout: JSON.stringify({ loggedIn: true }), stderr: "" }]),
+    transport: successTransport([], [{ exitCode: 0, stdout: JSON.stringify({ loggedIn: true, authMethod: "claude.ai" }), stderr: "" }], async () => "contains a private token"),
     snapshotPath: "/snapshot",
-    readFile: async () => "contains a private token",
   });
   await assert.rejects(malformed.read(), errorWithCode("malformed-data", "private token"));
+
+  const apiKey = createClaudeUsageReader({
+    transport: successTransport([], [{ exitCode: 0, stdout: JSON.stringify({ loggedIn: true, authMethod: "apiKey" }), stderr: "" }], async () => "{}"),
+    snapshotPath: "/snapshot",
+  });
+  await assert.rejects(apiKey.read(), errorWithCode("authentication-required"));
 });
 
 test("preserves an aged Claude snapshot so the core exposes stale usage instead of inventing a reset", async () => {
   const reader = createClaudeUsageReader({
-    transport: successTransport([], [{ exitCode: 0, stdout: JSON.stringify({ loggedIn: true }), stderr: "" }]),
-    snapshotPath: "/snapshot",
-    readFile: async () => JSON.stringify({
+    transport: successTransport([], [{ exitCode: 0, stdout: JSON.stringify({ loggedIn: true, authMethod: "claude.ai" }), stderr: "" }], async () => JSON.stringify({
       captured_at: "2026-07-13T11:40:00.000Z",
       claude_code_version: "2.1.207",
-      five_hour: { used_percentage: 23.5, resets_at: 1_784_000_000 },
-    }),
+      five_hour: { used_percentage: 23.5, resets_at: 1_783_900_000 },
+    })),
+    snapshotPath: "/snapshot",
   });
   const core = new PluginCore({
     providers: [{ id: "claude", usageReader: reader }],
@@ -133,6 +157,34 @@ test("preserves an aged Claude snapshot so the core exposes stale usage instead 
 
   assert.equal(core.stateFor("claude").windows[0].quality, "stale");
   assert.equal(core.stateFor("claude").windows[0].forecast.paceStatus, "unknown");
+});
+
+test("marks a Claude window awaiting a fresh observation after its reported reset", async () => {
+  const reader = createClaudeUsageReader({
+    transport: successTransport([], [{ exitCode: 0, stdout: JSON.stringify({ loggedIn: true, authMethod: "claude.ai" }), stderr: "" }], async () => JSON.stringify({
+      captured_at: "2026-07-13T11:59:00.000Z",
+      claude_code_version: "2.1.207",
+      five_hour: { used_percentage: 23.5, resets_at: 1_783_900_000 },
+    })),
+    snapshotPath: "/snapshot",
+    now: () => NOW,
+  });
+  const core = new PluginCore({ providers: [{ id: "claude", usageReader: reader }], now: () => NOW });
+
+  await core.refreshProvider("claude");
+
+  assert.equal(core.stateFor("claude").windows[0].awaitingFreshObservation, true);
+  assert.equal(core.stateFor("claude").windows[0].quality, "stale");
+});
+
+test("rejects invalid non-null provider usage values instead of treating them as missing", async () => {
+  const codex = createCodexUsageReader({
+    transport: successTransport([], [
+      { exitCode: 0, stdout: "0.144.1", stderr: "" },
+      { exitCode: 0, stdout: JSON.stringify({ id: 1, result: { rateLimits: { primary: { usedPercent: 101 } } } }), stderr: "" },
+    ]),
+  });
+  await assert.rejects(codex.read(), errorWithCode("malformed-data"));
 });
 
 function codexLimits() {
@@ -154,7 +206,7 @@ function observation(provider, windowKind, usageProgress, resetAt, durationMs, o
   };
 }
 
-function successTransport(calls, responses) {
+function successTransport(calls, responses, readFile) {
   return {
     execute: async (command) => {
       calls.push(command);
@@ -162,6 +214,7 @@ function successTransport(calls, responses) {
       if (!response) throw new Error("Unexpected command");
       return response;
     },
+    ...(readFile ? { readFile } : {}),
   };
 }
 

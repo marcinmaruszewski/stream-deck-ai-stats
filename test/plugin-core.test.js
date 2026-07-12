@@ -287,6 +287,35 @@ test("bridges only the explicitly selected WSL distribution without a shell", as
   }]]);
 });
 
+test("reads usage snapshots in the selected native or WSL environment", async () => {
+  const native = createPlatformProcessTransport({
+    platform: "win32",
+    readFile: async (path, encoding) => {
+      assert.equal(path, "C:\\Users\\me\\claude-usage.json");
+      assert.equal(encoding, "utf8");
+      return "native snapshot";
+    },
+  });
+  assert.equal(await native.readFile("C:\\Users\\me\\claude-usage.json"), "native snapshot");
+
+  const calls = [];
+  const child = fakeChild();
+  const wsl = createPlatformProcessTransport({
+    platform: "win32",
+    mode: "wsl",
+    wsl: { distribution: "Ubuntu-24.04" },
+    spawn: (...args) => { calls.push(args); return child; },
+  });
+  const snapshot = wsl.readFile("/home/me/.claude/usage.json");
+  child.stdout.emit("data", "wsl snapshot");
+  child.emit("close", 0, null);
+
+  assert.equal(await snapshot, "wsl snapshot");
+  assert.deepEqual(calls[0].slice(0, 2), ["wsl.exe", [
+    "--distribution", "Ubuntu-24.04", "--exec", "cat", "/home/me/.claude/usage.json",
+  ]]);
+});
+
 test("uses the native macOS CLI and rejects cancelled or timed out commands", async () => {
   const children = [];
   const transport = createPlatformProcessTransport({

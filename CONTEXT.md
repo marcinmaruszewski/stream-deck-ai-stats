@@ -36,6 +36,10 @@ _Avoid_: Usage rollback, quota bug
 The recency of a usage observation compared with now. Freshness determines whether the observation can drive current pace and forecast status, not whether its reported value is discarded.
 _Avoid_: Data validity, sync status
 
+**Awaiting fresh observation**:
+A usage window whose provider-reported reset time has passed, but for which the plugin has not received a new usage observation for the next window. It is shown as stale rather than assumed to have zero usage.
+_Avoid_: Reset to zero, inactive window
+
 **Burn pace**:
 The relationship between elapsed time and usage progress that indicates whether the allowance is being consumed sustainably.
 _Avoid_: Burn rate, token speed
