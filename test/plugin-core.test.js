@@ -2,6 +2,8 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import { createProcessTransport, createProviderAdapter, PluginCore, providerCapabilities } from "../src/core/index.js";
+import { createPlatformProcessTransport, ProcessTimeoutError } from "../src/core/index.js";
+import { EventEmitter } from "node:events";
 
 const NOW = new Date("2026-07-13T12:00:00.000Z");
 const HOUR = 60 * 60 * 1000;
@@ -230,3 +232,107 @@ test("reports unsupported window keeping without treating usage monitoring as an
   assert.equal(core.stateFor("claude").operationalState, "unsupported");
   assert.equal(core.stateFor("claude").windows[0].quality, "fresh");
 });
+
+test("runs a native Windows CLI with an explicit executable and merged environment", async () => {
+  const calls = [];
+  const child = fakeChild();
+  const transport = createPlatformProcessTransport({
+    platform: "win32",
+    executableOverrides: { codex: "C:\\Tools\\codex.exe" },
+    inheritedEnv: { PATH: "base" },
+    environment: { CODEX_HOME: "C:\\Users\\me\\.codex" },
+    spawn: (...args) => { calls.push(args); return child; },
+  });
+
+  const result = transport.execute({ executable: "codex", args: ["app-server"], input: "request" });
+  child.stdout.emit("data", "protocol output");
+  child.stderr.emit("data", "diagnostic");
+  child.emit("close", 0, null);
+
+  assert.deepEqual(await result, { exitCode: 0, signal: null, stdout: "protocol output", stderr: "diagnostic" });
+  assert.deepEqual(calls, [["C:\\Tools\\codex.exe", ["app-server"], {
+    cwd: undefined,
+    env: { PATH: "base", CODEX_HOME: "C:\\Users\\me\\.codex" },
+    windowsHide: true,
+    shell: false,
+  }]]);
+  assert.deepEqual(child.stdin.values, ["request"]);
+});
+
+test("bridges only the explicitly selected WSL distribution without a shell", async () => {
+  const calls = [];
+  const child = fakeChild();
+  const transport = createPlatformProcessTransport({
+    platform: "win32",
+    mode: "wsl",
+    executableOverrides: { wsl: "C:\\Windows\\System32\\wsl.exe" },
+    inheritedEnv: { PATH: "host" },
+    environment: { CODEX_HOME: "/mnt/c/Users/me/.codex" },
+    wsl: { distribution: "Ubuntu-24.04", hostEnvironment: { WSLENV: "CODEX_HOME/u" } },
+    spawn: (...args) => { calls.push(args); return child; },
+  });
+
+  const result = transport.execute({ executable: "codex", args: ["exec", "Reply with exactly OK."], cwd: "/home/me/plugin" });
+  child.emit("close", 0, null);
+  await result;
+
+  assert.deepEqual(calls, [["C:\\Windows\\System32\\wsl.exe", [
+    "--distribution", "Ubuntu-24.04", "--cd", "/home/me/plugin", "--env", "CODEX_HOME=/mnt/c/Users/me/.codex",
+    "--exec", "codex", "exec", "Reply with exactly OK.",
+  ], {
+    cwd: undefined,
+    env: { PATH: "host", WSLENV: "CODEX_HOME/u" },
+    windowsHide: true,
+    shell: false,
+  }]]);
+});
+
+test("uses the native macOS CLI and rejects cancelled or timed out commands", async () => {
+  const children = [];
+  const transport = createPlatformProcessTransport({
+    platform: "darwin",
+    defaultTimeoutMs: 5,
+    spawn: (...args) => {
+      const child = fakeChild();
+      children.push({ child, args });
+      return child;
+    },
+  });
+  const controller = new AbortController();
+  const cancelled = transport.execute({ executable: "codex", signal: controller.signal });
+  controller.abort();
+  await assert.rejects(cancelled, { name: "AbortError" });
+  assert.equal(children[0].args[0], "codex");
+  assert.deepEqual(children[0].args[1], []);
+  assert.equal(children[0].args[2].env.PATH, process.env.PATH);
+  assert.equal(children[0].args[2].windowsHide, false);
+  assert.equal(children[0].args[2].shell, false);
+  assert.equal(children[0].child.killCalls, 1);
+
+  const timedOut = transport.execute({ executable: "codex" });
+  await assert.rejects(timedOut, ProcessTimeoutError);
+  assert.equal(children[1].child.killCalls, 1);
+});
+
+test("recovers by terminating outstanding child processes", async () => {
+  const child = fakeChild();
+  const transport = createPlatformProcessTransport({ platform: "darwin", spawn: () => child });
+  const pending = transport.execute({ executable: "codex" });
+  const recovery = transport.recover();
+  child.emit("close", null, "SIGTERM");
+  await recovery;
+  assert.equal(child.killCalls, 1);
+  await pending;
+});
+
+function fakeChild() {
+  const child = new EventEmitter();
+  child.stdout = new EventEmitter();
+  child.stderr = new EventEmitter();
+  child.stdin = { values: [], end(value) { this.values.push(value); } };
+  child.exitCode = null;
+  child.killed = false;
+  child.killCalls = 0;
+  child.kill = () => { child.killCalls += 1; child.killed = true; return true; };
+  return child;
+}

@@ -1,3 +1,4 @@
 export { PluginCore } from "./plugin-core.js";
 export { normalizeObservation } from "./usage-model.js";
 export { createProcessTransport, createProviderAdapter, providerCapabilities } from "./contracts.js";
+export { createPlatformProcessTransport, ProcessTimeoutError, ProcessTransportError } from "./process-transport.js";
