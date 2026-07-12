@@ -12,16 +12,44 @@ _Avoid_: Session, billing period
 The fraction of the allowance consumed within the current usage window.
 _Avoid_: Token count, quota progress
 
+**Window kind**:
+The role of a usage window within a provider's plan, such as short-term or long-term. It distinguishes independent allowances and is not a user session or billing period.
+_Avoid_: Window level, session type
+
+**Usage observation**:
+A point-in-time report of usage progress and reset timing for one usage window. An observation may be incomplete or stale when provider data is unavailable or delayed, and the provider may externally change the reset timing or progress between observations.
+_Avoid_: Usage event, token sample
+
+**Observation provenance**:
+Whether a value was reported by the provider or derived by the plugin from an observation and elapsed time.
+_Avoid_: Confidence score
+
+**Observation quality**:
+The completeness and freshness of a usage observation, expressed as `fresh`, `stale`, `incomplete`, or `unknown`. A quality marker may also explain a reset discontinuity reported by the provider.
+_Avoid_: Sync status, validity flag
+
+**Reset discontinuity**:
+A provider-reported change in usage progress or reset timing that breaks continuity with the previous usage observation, potentially because an allowance was reset externally. It starts a new forecast basis and is not evidence of user consumption.
+_Avoid_: Usage rollback, quota bug
+
+**Data freshness**:
+The recency of a usage observation compared with now. Freshness determines whether the observation can drive current pace and forecast status, not whether its reported value is discarded.
+_Avoid_: Data validity, sync status
+
 **Burn pace**:
 The relationship between elapsed time and usage progress that indicates whether the allowance is being consumed sustainably.
 _Avoid_: Burn rate, token speed
+
+**Exhaustion forecast**:
+An estimate of whether the current burn pace would consume an allowance before its usage window ends. It is an estimate, not a provider fact, and is unknown when the usage observation or elapsed-window data is insufficient.
+_Avoid_: Limit prediction, quota forecast
 
 **Pace delta**:
 The percentage-point difference between elapsed time in a usage window and usage progress. A positive value means usage is behind elapsed time; a negative value means usage is ahead of elapsed time.
 _Avoid_: Token delta, session score
 
 **Pace status**:
-A user-facing classification of burn pace, including whether current consumption is likely to exhaust the allowance before the usage window ends.
+A user-facing classification of burn pace: `unknown`, `on-track`, `at-risk`, or `likely-to-exhaust`, including whether current consumption is likely to exhaust the allowance before the usage window ends.
 _Avoid_: Limit status, token alert
 
 **Pace accent**:
