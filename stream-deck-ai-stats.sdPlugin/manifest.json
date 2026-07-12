@@ -1,0 +1,49 @@
+{
+  "$schema": "https://schemas.elgato.com/streamdeck/plugins/manifest.json",
+  "Author": "Marcin Maruszewski",
+  "Category": "AI Usage Stats",
+  "Name": "AI Usage Stats",
+  "Description": "Monitor Codex and Claude Code usage windows on Stream Deck.",
+  "Version": "0.1.0.0",
+  "SDKVersion": 3,
+  "UUID": "com.marcinmaruszewski.ai-usage",
+  "Icon": "assets/plugin-icon",
+  "CodePath": "bin/plugin.js",
+  "Nodejs": { "Version": "24" },
+  "Software": { "MinimumVersion": "7.1" },
+  "OS": [
+    { "Platform": "windows", "MinimumVersion": "10" },
+    { "Platform": "mac", "MinimumVersion": "12" }
+  ],
+  "PropertyInspectorPath": "ui/property-inspector.html",
+  "Actions": [
+    {
+      "Name": "Codex 5h usage",
+      "UUID": "com.marcinmaruszewski.ai-usage.codex.short-term",
+      "Tooltip": "Codex short-term usage window",
+      "Icon": "assets/codex-tile",
+      "States": [{ "Image": "assets/codex-tile", "ShowTitle": false }]
+    },
+    {
+      "Name": "Codex 7d usage",
+      "UUID": "com.marcinmaruszewski.ai-usage.codex.long-term",
+      "Tooltip": "Codex long-term usage window",
+      "Icon": "assets/codex-tile",
+      "States": [{ "Image": "assets/codex-tile", "ShowTitle": false }]
+    },
+    {
+      "Name": "Claude Code 5h usage",
+      "UUID": "com.marcinmaruszewski.ai-usage.claude.short-term",
+      "Tooltip": "Claude Code short-term usage window",
+      "Icon": "assets/claude-tile",
+      "States": [{ "Image": "assets/claude-tile", "ShowTitle": false }]
+    },
+    {
+      "Name": "Claude Code 7d usage",
+      "UUID": "com.marcinmaruszewski.ai-usage.claude.long-term",
+      "Tooltip": "Claude Code long-term usage window",
+      "Icon": "assets/claude-tile",
+      "States": [{ "Image": "assets/claude-tile", "ShowTitle": false }]
+    }
+  ]
+}

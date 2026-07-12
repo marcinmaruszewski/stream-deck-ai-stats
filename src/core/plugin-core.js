@@ -15,16 +15,23 @@ export class PluginCore {
   #timer;
 
   constructor({ providers, now = () => new Date(), freshnessMs = 15 * 60 * 1000, settings = {}, ui = {}, wait = delay }) {
-    this.#providers = new Map(providers.map((provider) => {
-      const adapter = createProviderAdapter(provider);
-      return [adapter.id, adapter];
-    }));
-    if (this.#providers.size !== providers.length) throw new Error("Provider identifiers must be unique");
+    this.#providers = providerMap(providers);
     this.now = now;
     this.freshnessMs = freshnessMs;
     this.settings = settings;
     this.ui = ui;
     this.wait = wait;
+  }
+
+  async configure({ providers, settings = {} } = {}) {
+    await Promise.allSettled([...this.#providers.values()].map((provider) => provider.recover?.()));
+    await Promise.allSettled([...this.#inFlight.values(), ...this.#windowChecks.values()]);
+    this.#providers = providerMap(providers);
+    this.settings = settings;
+    for (const providerId of this.#states.keys()) {
+      if (!this.#providers.has(providerId)) this.#states.delete(providerId);
+    }
+    await this.runCycle();
   }
 
   stateFor(providerId) {
@@ -192,11 +199,22 @@ function usageReadFailure(error) {
     "malformed-data": "Provider usage data was malformed",
     "command-unavailable": "Provider CLI is unavailable",
     "command-failed": "Provider usage command failed",
+    "configuration-required": "Provider configuration is incomplete",
   };
   const code = error?.code;
   return code && messages[code]
     ? { code, message: messages[code] }
     : { message: "Usage observation unavailable" };
+}
+
+function providerMap(providers) {
+  if (!Array.isArray(providers)) throw new Error("PluginCore requires a provider list");
+  const adapters = new Map(providers.map((provider) => {
+    const adapter = createProviderAdapter(provider);
+    return [adapter.id, adapter];
+  }));
+  if (adapters.size !== providers.length) throw new Error("Provider identifiers must be unique");
+  return adapters;
 }
 
 function delay(milliseconds) {

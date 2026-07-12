@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>AI Usage Stats settings</title>
+    <link rel="stylesheet" href="property-inspector.css">
+  </head>
+  <body>
+    <main>
+      <header>
+        <p class="eyebrow">AI usage stats</p>
+        <h1>Monitor setup</h1>
+        <p class="lede">Use installed provider CLIs. This plugin never stores their credentials.</p>
+      </header>
+
+      <form id="settings-form">
+        <fieldset>
+          <legend>Discovery</legend>
+          <label>Execution environment
+            <select name="transportMode">
+              <option value="auto">Automatic discovery</option>
+              <option value="native">Native Windows or macOS</option>
+              <option value="wsl">WSL distribution</option>
+            </select>
+          </label>
+          <label>WSL distribution <input name="wslDistribution" autocomplete="off" placeholder="Ubuntu-24.04"></label>
+        </fieldset>
+
+        <fieldset>
+          <legend>Manual overrides</legend>
+          <p class="hint">Leave an override empty to keep automatic discovery.</p>
+          <label>Codex executable <input name="codexExecutable" autocomplete="off" placeholder="codex"></label>
+          <label>Claude executable <input name="claudeExecutable" autocomplete="off" placeholder="claude"></label>
+          <label>Claude status snapshot <input name="claudeSnapshotPath" autocomplete="off" placeholder="~/.claude/usage.json"></label>
+        </fieldset>
+
+        <button type="submit">Save settings</button>
+      </form>
+
+      <section class="diagnostics" aria-live="polite">
+        <div class="section-heading"><p class="eyebrow">Selected tile</p><button id="refresh-diagnostics" type="button">Refresh</button></div>
+        <dl>
+          <div><dt>Operational state</dt><dd id="operational-state">Waiting for a usage observation</dd></div>
+          <div><dt>Observation quality</dt><dd id="observation-quality">Unknown</dd></div>
+          <div><dt>Reset time</dt><dd id="reset-at">Unavailable</dd></div>
+          <div><dt>Last error</dt><dd id="last-error">None</dd></div>
+        </dl>
+      </section>
+    </main>
+    <script src="property-inspector.js"></script>
+  </body>
+</html>

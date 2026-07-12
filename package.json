@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "test": "node --test test/*.test.js",
-    "check": "node --check src/core/*.js"
+    "check": "node --check src/core/*.js && node --check src/stream-deck/*.js",
+    "bundle": "node scripts/bundle-plugin.mjs"
   }
 }

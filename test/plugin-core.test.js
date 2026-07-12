@@ -113,6 +113,25 @@ test("makes provider capabilities explicit while leaving process execution outsi
   assert.throws(() => createProviderAdapter({ id: "missing-reader" }), /UsageReader/);
 });
 
+test("recovers replaced provider transports before applying new Property Inspector configuration", async () => {
+  const lifecycle = [];
+  const core = new PluginCore({
+    providers: [{
+      id: "codex",
+      usageReader: { read: async () => [] },
+      recover: async () => lifecycle.push("recover-old"),
+    }],
+    now: () => NOW,
+  });
+
+  await core.configure({
+    providers: [{ id: "codex", usageReader: { read: async () => { lifecycle.push("read-new"); return []; } } }],
+    settings: { codex: {} },
+  });
+
+  assert.deepEqual(lifecycle, ["recover-old", "read-new"]);
+});
+
 test("keeps a window only when explicitly enabled and provider-confirmed inactive", async () => {
   let interactions = 0;
   const core = new PluginCore({
