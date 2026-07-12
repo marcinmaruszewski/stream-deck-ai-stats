@@ -28,7 +28,7 @@ export function staleObservation(observation) {
 }
 
 function observationQuality({ usageProgress, observedAt, resetAt, durationMs, now, freshnessMs }) {
-  if (usageProgress === null || observedAt === null || resetAt === null || durationMs === null) {
+  if (usageProgress === null || observedAt === null || resetAt === null) {
     return "incomplete";
   }
 
