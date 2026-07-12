@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { PluginCore } from "../src/core/index.js";
+import { createProcessTransport, createProviderAdapter, PluginCore, providerCapabilities } from "../src/core/index.js";
 
 const NOW = new Date("2026-07-13T12:00:00.000Z");
 const HOUR = 60 * 60 * 1000;
@@ -72,7 +72,7 @@ test("marks incomplete or stale observations unknown instead of inventing curren
 test("marks a provider-reported reset discontinuity as a new forecast basis", async () => {
   const observations = [
     observation({ usageProgress: 0.7 }),
-    observation({ usageProgress: 0.1, resetAt: new Date(NOW.getTime() + 5 * HOUR) }),
+    observation({ usageProgress: 0.8, resetAt: new Date(NOW.getTime() + 5 * HOUR) }),
   ];
   const core = new PluginCore({
     providers: [{ id: "codex", usageReader: { read: async () => [observations.shift()] } }],
@@ -83,6 +83,32 @@ test("marks a provider-reported reset discontinuity as a new forecast basis", as
   await core.refreshProvider("codex");
 
   assert.equal(core.stateFor("codex").windows[0].resetDiscontinuity, true);
+});
+
+test("marks a decreasing provider progress as a reset discontinuity even without a new reset time", async () => {
+  const observations = [observation({ usageProgress: 0.7 }), observation({ usageProgress: 0.1 })];
+  const core = new PluginCore({
+    providers: [{ id: "codex", usageReader: { read: async () => [observations.shift()] } }],
+    now: () => NOW,
+  });
+
+  await core.refreshProvider("codex");
+  await core.refreshProvider("codex");
+
+  assert.equal(core.stateFor("codex").windows[0].resetDiscontinuity, true);
+});
+
+test("makes provider capabilities explicit while leaving process execution outside the core", () => {
+  const transport = createProcessTransport({ execute: async () => ({ exitCode: 0, stdout: "", stderr: "" }) });
+  const adapter = createProviderAdapter({
+    id: "codex",
+    usageReader: { read: async () => [] },
+    transport,
+  });
+
+  assert.deepEqual(providerCapabilities(adapter), { usageReading: true, windowKeeping: false });
+  assert.equal(typeof adapter.transport.execute, "function");
+  assert.throws(() => createProviderAdapter({ id: "missing-reader" }), /UsageReader/);
 });
 
 test("keeps a window only when explicitly enabled and provider-confirmed inactive", async () => {
@@ -132,6 +158,64 @@ test("retries a failed window-keeping interaction using the configured backoff",
   assert.equal(attempts, 2);
   assert.deepEqual(waits, [30 * 1000]);
   assert.equal(core.stateFor("codex").operationalState, "window-keeping");
+});
+
+test("prevents concurrent checks from starting duplicate window-keeping interactions", async () => {
+  let interactions = 0;
+  const core = new PluginCore({
+    providers: [{
+      id: "codex",
+      usageReader: { read: async () => [observation()] },
+      windowKeeper: {
+        getActivityVerdict: async () => "inactive",
+        keepWindow: async () => { interactions += 1; return { completed: true }; },
+      },
+    }],
+    now: () => NOW,
+    settings: { codex: { windowKeepingEnabled: true } },
+  });
+
+  await Promise.all([core.runCycle(), core.runCycle()]);
+
+  assert.equal(interactions, 1);
+});
+
+test("recovers transport-backed providers once before an appearance refresh", async () => {
+  let recoveries = 0;
+  const core = new PluginCore({
+    providers: [{
+      id: "codex",
+      usageReader: { read: async () => [observation()] },
+      recover: async () => { recoveries += 1; },
+    }],
+    now: () => NOW,
+  });
+
+  await Promise.all([core.onWillAppear(), core.onWillAppear()]);
+
+  assert.equal(recoveries, 1);
+  assert.equal(core.stateFor("codex").operationalState, "normal");
+  core.stop();
+});
+
+test("keeps cached observations stale and visible when lifecycle recovery fails", async () => {
+  const core = new PluginCore({
+    providers: [{
+      id: "codex",
+      usageReader: { read: async () => [observation()] },
+      recover: async () => { throw new Error("transport unavailable"); },
+    }],
+    now: () => NOW,
+  });
+
+  await core.refreshProvider("codex");
+  try {
+    await core.onSystemDidWakeUp();
+    assert.equal(core.stateFor("codex").operationalState, "error");
+    assert.equal(core.stateFor("codex").windows[0].quality, "stale");
+  } finally {
+    core.stop();
+  }
 });
 
 test("reports unsupported window keeping without treating usage monitoring as an error", async () => {
