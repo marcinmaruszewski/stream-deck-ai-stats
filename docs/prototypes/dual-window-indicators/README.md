@@ -23,6 +23,8 @@ Provider identity is a low-contrast **provider accent** behind the information, 
 
 The **pace accent** colors the progress ring, large usage-progress value, and pace delta together: green means the usage progress is behind elapsed time; amber/coral means it is ahead of elapsed time. This makes the urgent distinction visible without reading the delta.
 
+The SVG also previews an operational badge in the top-right corner: red exclamation for an error, pulsating blue reset mark while window keeping is active, amber clock for stale data, and no badge for a normal tile.
+
 The values in the mockup are illustrative. For example, `↻ 3h` and `Δ −22pp` mean that the usage window resets in three hours and usage progress is 22 percentage points ahead of elapsed time.
 
 ## Rejected combined-key directions
