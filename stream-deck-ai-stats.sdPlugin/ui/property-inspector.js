@@ -14,11 +14,17 @@
     if (state.socket?.readyState === WebSocket.OPEN) state.socket.send(JSON.stringify({ event, context: state.context, ...payload }));
   }
   function readSettings() {
-    return Object.fromEntries(new FormData(form).entries());
+    const settings = Object.fromEntries(new FormData(form).entries());
+    for (const control of form.elements) if (control.type === "checkbox" && control.name) settings[control.name] = control.checked;
+    return settings;
   }
   function writeSettings(settings) {
     state.settings = settings || {};
-    for (const control of form.elements) if (control.name && settings[control.name] !== undefined) control.value = settings[control.name];
+    for (const control of form.elements) {
+      if (!control.name || settings[control.name] === undefined) continue;
+      if (control.type === "checkbox") control.checked = settings[control.name] === true;
+      else control.value = settings[control.name];
+    }
   }
   function showDiagnostics(payload = {}) {
     diagnostics.operationalState.textContent = payload.operationalState || "Waiting for a usage observation";

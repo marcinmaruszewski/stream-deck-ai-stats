@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import { createProviderAdapter } from "../core/contracts.js";
 import { createPlatformProcessTransport } from "../core/process-transport.js";
 import { createClaudeUsageReader, createCodexUsageReader, UsageReaderError } from "../core/usage-readers.js";
+import { createCodexWindowKeeper } from "../core/codex-window-keeper.js";
 import { StreamDeckPlugin } from "./plugin.js";
 
 /** Starts the Node 24 Stream Deck websocket boundary without exposing CLI work to the Property Inspector. */
@@ -55,8 +56,14 @@ export async function createConfiguredProviders(settings = {}, { platform = proc
       ...configurations.claude,
       executableOverrides: compact({ claude: settings.claudeExecutable }),
     });
+    const codexUsageReader = createCodexUsageReader({ transport: codexTransport });
     return [
-      createProviderAdapter({ id: "codex", transport: codexTransport, usageReader: createCodexUsageReader({ transport: codexTransport }) }),
+      createProviderAdapter({
+        id: "codex",
+        transport: codexTransport,
+        usageReader: codexUsageReader,
+        windowKeeper: createCodexWindowKeeper({ transport: codexTransport, usageReader: codexUsageReader }),
+      }),
       createProviderAdapter({
         id: "claude",
         transport: claudeTransport,
@@ -95,7 +102,17 @@ async function resolveProviderTransportConfiguration(settings, { platform, execu
 }
 
 function coreSettings(settings) {
-  return { codex: {}, claude: {}, ...settings };
+  return {
+    ...settings,
+    codex: {
+      ...settings.codex,
+      windowKeepingEnabled: settings.codexWindowKeepingEnabled === true,
+      ...(typeof settings.codexWindowKeepingModel === "string" && settings.codexWindowKeepingModel.length > 0
+        ? { windowKeepingModel: settings.codexWindowKeepingModel }
+        : {}),
+    },
+    claude: { ...settings.claude },
+  };
 }
 
 function unavailableUsageReader() {

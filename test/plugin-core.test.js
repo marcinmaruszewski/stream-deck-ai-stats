@@ -153,6 +153,28 @@ test("keeps a window only when explicitly enabled and provider-confirmed inactiv
   assert.equal(core.stateFor("codex").operationalState, "window-keeping");
 });
 
+test("refreshes usage after a validated window-keeping turn", async () => {
+  let reads = 0;
+  const core = new PluginCore({
+    providers: [{
+      id: "codex",
+      usageReader: { read: async () => { reads += 1; return [observation({ usageProgress: reads / 10 })]; } },
+      windowKeeper: {
+        getActivityVerdict: async () => "inactive",
+        keepWindow: async () => ({ completed: true }),
+      },
+    }],
+    now: () => NOW,
+    settings: { codex: { windowKeepingEnabled: true } },
+  });
+
+  await core.runCycle();
+
+  assert.equal(reads, 2);
+  assert.equal(core.stateFor("codex").windows[0].usageProgress, 0.2);
+  assert.equal(core.stateFor("codex").operationalState, "window-keeping");
+});
+
 test("retries a failed window-keeping interaction using the configured backoff", async () => {
   let attempts = 0;
   const waits = [];

@@ -35,6 +35,13 @@
           <label>Claude status snapshot <input name="claudeSnapshotPath" autocomplete="off" placeholder="~/.claude/usage.json"></label>
         </fieldset>
 
+        <fieldset>
+          <legend>Codex window keeping</legend>
+          <label><input type="checkbox" name="codexWindowKeepingEnabled"> Keep an inactive short-term usage window active</label>
+          <label>Model override <input name="codexWindowKeepingModel" autocomplete="off" placeholder="Use the Codex CLI default"></label>
+          <p class="hint">Optional. This runs a real, minimal Codex turn and consumes plan usage.</p>
+        </fieldset>
+
         <button type="submit">Save settings</button>
       </form>
 

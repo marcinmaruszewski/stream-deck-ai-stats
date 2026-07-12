@@ -141,6 +141,7 @@ export class PluginCore {
       if (verdict !== "inactive" || this.#inCooldown(providerId)) return;
 
       await this.#keepWithRetries(providerId, provider.windowKeeper);
+      await this.refreshProvider(providerId);
       this.#cooldowns.set(providerId, this.now().getTime() + FIFTEEN_MINUTES);
       this.#publish({ ...this.stateFor(providerId), operationalState: "window-keeping" });
     } catch (error) {

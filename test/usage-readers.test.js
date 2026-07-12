@@ -6,6 +6,7 @@ import {
   PluginCore,
   createClaudeUsageReader,
   createCodexUsageReader,
+  createCodexWindowKeeper,
 } from "../src/core/index.js";
 
 const NOW = new Date("2026-07-13T12:00:00.000Z");
@@ -65,6 +66,38 @@ test("stops Codex app-server as soon as the rate-limit response arrives", async 
 
   assert.equal(aborted, true);
   assert.equal(observations.length, 2);
+});
+
+test("uses a provider-confirmed inactive window and validated Codex turn for window keeping", async () => {
+  const commands = [];
+  const directories = [];
+  const keeper = createCodexWindowKeeper({
+    usageReader: { read: async () => [] },
+    transport: {
+      execute: async (command) => {
+        commands.push(command);
+        return {
+          exitCode: 0,
+          stdout: `${JSON.stringify({ type: "thread.started" })}\n${JSON.stringify({ type: "turn.completed" })}\n`,
+          stderr: "",
+        };
+      },
+    },
+    createWorkDirectory: async () => "/tmp/window-keeping-test",
+    removeWorkDirectory: async (path) => directories.push(path),
+  });
+
+  assert.equal(await keeper.getActivityVerdict(), "inactive");
+  assert.deepEqual(await keeper.keepWindow({ model: "gpt-5-codex-mini" }), { completed: true });
+  assert.deepEqual(commands, [{
+    executable: "codex",
+    args: [
+      "exec", "--ephemeral", "--json", "--sandbox", "read-only", "--skip-git-repo-check", "--ignore-user-config", "--ignore-rules",
+      "--model", "gpt-5-codex-mini", "Reply with exactly OK. Do not use tools.",
+    ],
+    cwd: "/tmp/window-keeping-test",
+  }]);
+  assert.deepEqual(directories, ["/tmp/window-keeping-test"]);
 });
 
 test("classifies unsupported, unauthenticated, and malformed Codex responses without exposing output", async () => {
