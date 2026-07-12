@@ -175,6 +175,54 @@ test("refreshes usage after a validated window-keeping turn", async () => {
   assert.equal(core.stateFor("codex").operationalState, "window-keeping");
 });
 
+test("retains the usage-read error when the post-turn observation fails", async () => {
+  let reads = 0;
+  const core = new PluginCore({
+    providers: [{
+      id: "codex",
+      usageReader: {
+        read: async () => {
+          reads += 1;
+          if (reads === 2) throw new Error("provider unavailable");
+          return [observation()];
+        },
+      },
+      windowKeeper: {
+        getActivityVerdict: async () => "inactive",
+        keepWindow: async () => ({ completed: true }),
+      },
+    }],
+    now: () => NOW,
+    settings: { codex: { windowKeepingEnabled: true } },
+  });
+
+  await core.runCycle();
+
+  assert.equal(core.stateFor("codex").operationalState, "error");
+  assert.equal(core.stateFor("codex").windows[0].quality, "stale");
+});
+
+test("reports an unavailable configured window-keeping model explicitly", async () => {
+  const core = new PluginCore({
+    providers: [{
+      id: "codex",
+      usageReader: { read: async () => [observation()] },
+      windowKeeper: {
+        getActivityVerdict: async () => "inactive",
+        keepWindow: async () => ({ completed: false, errorCode: "model-unavailable" }),
+      },
+    }],
+    now: () => NOW,
+    settings: { codex: { windowKeepingEnabled: true, windowKeepingModel: "not-available" } },
+    wait: async () => { throw new Error("The unavailable model must not retry"); },
+  });
+
+  await core.runCycle();
+
+  assert.equal(core.stateFor("codex").errorCode, "model-unavailable");
+  assert.equal(core.stateFor("codex").error, "Configured window-keeping model is unavailable");
+});
+
 test("retries a failed window-keeping interaction using the configured backoff", async () => {
   let attempts = 0;
   const waits = [];

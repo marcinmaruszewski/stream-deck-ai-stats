@@ -88,8 +88,10 @@ export class PluginCore {
           : normalized;
       });
       this.#publish({ provider: providerId, operationalState: "normal", windows });
+      return true;
     } catch (error) {
       this.#publishFailure(providerId, usageReadFailure(error));
+      return false;
     }
   }
 
@@ -141,11 +143,11 @@ export class PluginCore {
       if (verdict !== "inactive" || this.#inCooldown(providerId)) return;
 
       await this.#keepWithRetries(providerId, provider.windowKeeper);
-      await this.refreshProvider(providerId);
+      if (!await this.refreshProvider(providerId)) return;
       this.#cooldowns.set(providerId, this.now().getTime() + FIFTEEN_MINUTES);
       this.#publish({ ...this.stateFor(providerId), operationalState: "window-keeping" });
     } catch (error) {
-      this.#publishFailure(providerId, "Window keeping failed");
+      this.#publishFailure(providerId, windowKeepingFailure(error));
     }
   }
 
@@ -155,8 +157,12 @@ export class PluginCore {
       try {
         const result = await windowKeeper.keepWindow({ provider: providerId, model: this.settings[providerId]?.windowKeepingModel });
         if (result?.completed === true) return;
+        if (result?.errorCode === "model-unavailable") {
+          throw Object.assign(new Error("Configured window-keeping model is unavailable"), { code: "model-unavailable" });
+        }
         lastFailure = new Error("Window keeping did not produce a validated completion");
       } catch (error) {
+        if (error?.code === "model-unavailable") throw error;
         lastFailure = error instanceof Error ? error : new Error("Window keeping failed");
       }
       if (attempt < RETRY_DELAYS.length) await this.wait(RETRY_DELAYS[attempt]);
@@ -206,6 +212,13 @@ function usageReadFailure(error) {
   return code && messages[code]
     ? { code, message: messages[code] }
     : { message: "Usage observation unavailable" };
+}
+
+function windowKeepingFailure(error) {
+  if (error?.code === "model-unavailable") {
+    return { code: error.code, message: "Configured window-keeping model is unavailable" };
+  }
+  return { message: "Window keeping failed" };
 }
 
 function providerMap(providers) {

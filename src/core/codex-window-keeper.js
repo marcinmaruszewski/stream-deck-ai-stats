@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 const PROMPT = "Reply with exactly OK. Do not use tools.";
+const DEFAULT_MODEL = "gpt-5.6-luna";
 
 /**
  * Performs the explicitly enabled Codex interaction used to start an inactive
@@ -26,7 +27,7 @@ export function createCodexWindowKeeper({
       const observations = await usageReader.read();
       if (!Array.isArray(observations)) throw new Error("Codex UsageReader must return an observation list");
       const shortTerm = observations.find((observation) => observation?.windowKind === "short-term");
-      if (!shortTerm) return "inactive";
+      if (!shortTerm) return "unknown";
       return shortTerm.resetAt instanceof Date ? "active" : "unknown";
     },
 
@@ -40,12 +41,12 @@ export function createCodexWindowKeeper({
           executable: "codex",
           args: [
             "exec", "--ephemeral", "--json", "--sandbox", "read-only", "--skip-git-repo-check", "--ignore-user-config", "--ignore-rules",
-            ...(model ? ["--model", model] : []),
+            "--model", model ?? DEFAULT_MODEL,
             PROMPT,
           ],
           cwd,
         });
-        return { completed: completedTurn(result) };
+        return turnResult(result);
       } finally {
         await removeWorkDirectory(cwd);
       }
@@ -53,8 +54,8 @@ export function createCodexWindowKeeper({
   });
 }
 
-function completedTurn(result) {
-  if (result?.exitCode !== 0) return false;
+function turnResult(result) {
+  if (result?.exitCode !== 0) return { completed: false };
   const events = String(result.stdout ?? "").split(/\r?\n/).filter(Boolean);
   let completed = false;
   for (const event of events) {
@@ -62,10 +63,16 @@ function completedTurn(result) {
     try {
       message = JSON.parse(event);
     } catch {
-      return false;
+      return { completed: false };
     }
-    if (message?.type === "turn.failed" || message?.type === "error") return false;
+    if (message?.type === "turn.failed" || message?.type === "error") {
+      return { completed: false, ...(isModelFailure(message) ? { errorCode: "model-unavailable" } : {}) };
+    }
     if (message?.type === "turn.completed") completed = true;
   }
-  return completed;
+  return { completed };
+}
+
+function isModelFailure(message) {
+  return /\bmodel\b/i.test(JSON.stringify(message));
 }

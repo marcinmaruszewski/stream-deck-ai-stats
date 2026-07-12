@@ -68,7 +68,7 @@ test("stops Codex app-server as soon as the rate-limit response arrives", async 
   assert.equal(observations.length, 2);
 });
 
-test("uses a provider-confirmed inactive window and validated Codex turn for window keeping", async () => {
+test("fails closed on an unknown window verdict and validates a minimal Codex turn", async () => {
   const commands = [];
   const directories = [];
   const keeper = createCodexWindowKeeper({
@@ -87,13 +87,13 @@ test("uses a provider-confirmed inactive window and validated Codex turn for win
     removeWorkDirectory: async (path) => directories.push(path),
   });
 
-  assert.equal(await keeper.getActivityVerdict(), "inactive");
-  assert.deepEqual(await keeper.keepWindow({ model: "gpt-5-codex-mini" }), { completed: true });
+  assert.equal(await keeper.getActivityVerdict(), "unknown");
+  assert.deepEqual(await keeper.keepWindow(), { completed: true });
   assert.deepEqual(commands, [{
     executable: "codex",
     args: [
       "exec", "--ephemeral", "--json", "--sandbox", "read-only", "--skip-git-repo-check", "--ignore-user-config", "--ignore-rules",
-      "--model", "gpt-5-codex-mini", "Reply with exactly OK. Do not use tools.",
+      "--model", "gpt-5.6-luna", "Reply with exactly OK. Do not use tools.",
     ],
     cwd: "/tmp/window-keeping-test",
   }]);
