@@ -1,1 +1,3 @@
 stream-deck-ai-stats.sdPlugin/bin/
+dist/
+*.sdPlugin/bin/

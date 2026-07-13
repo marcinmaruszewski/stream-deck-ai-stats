@@ -1,6 +1,6 @@
 import { cp, mkdir, rm, writeFile } from "node:fs/promises";
 
-const bundle = new URL("../stream-deck-ai-stats.sdPlugin/bin/", import.meta.url);
+const bundle = new URL("../com.marcinmaruszewski.ai-usage.sdPlugin/bin/", import.meta.url);
 await rm(bundle, { recursive: true, force: true });
 await mkdir(bundle, { recursive: true });
 await cp(new URL("../src/", import.meta.url), new URL("./", bundle), { recursive: true });

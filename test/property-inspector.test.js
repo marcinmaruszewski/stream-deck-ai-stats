@@ -3,7 +3,7 @@ import { readFile } from "node:fs/promises";
 import test from "node:test";
 import vm from "node:vm";
 
-const inspectorUrl = new URL("../stream-deck-ai-stats.sdPlugin/ui/property-inspector.js", import.meta.url);
+const inspectorUrl = new URL("../com.marcinmaruszewski.ai-usage.sdPlugin/ui/property-inspector.js", import.meta.url);
 
 test("Property Inspector sends an explicitly scoped Codex request and renders its separate diagnostics", async () => {
   const elements = new Map();

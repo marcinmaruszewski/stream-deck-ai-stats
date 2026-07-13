@@ -1,0 +1,11 @@
+# The private installer contains only runtime assets. These patterns are a
+# second line of defence; scripts/validate-plugin.mjs also rejects them.
+.env*
+**/.env*
+**/*credential*
+**/*secret*
+**/*snapshot*
+**/*cache*
+**/*.log
+**/*.map
+**/node_modules/

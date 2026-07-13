@@ -1,0 +1,78 @@
+name: Private release
+
+on:
+  pull_request:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  verify-platform:
+    name: Verify and package (${{ matrix.platform }})
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: Windows/WSL contract
+            runner: windows-latest
+          - platform: macOS experimental
+            runner: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - run: npm install --global @elgato/cli@1.7.4
+      - run: npm run verify
+      - name: Validate and package this platform lane
+        shell: bash
+        run: |
+          mkdir -p platform-dist
+          streamdeck validate com.marcinmaruszewski.ai-usage.sdPlugin --no-update-check
+          streamdeck pack com.marcinmaruszewski.ai-usage.sdPlugin --output platform-dist --force --no-update-check
+
+  package:
+    name: Create private installer
+    needs: verify-platform
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - run: npm install --global @elgato/cli@1.7.4
+      - run: npm run package
+      - uses: actions/upload-artifact@v4
+        with:
+          name: private-stream-deck-plugin
+          path: dist/
+          if-no-files-found: error
+
+  draft-release:
+    name: Create draft release
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: package
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Require tag and package version parity
+        run: node scripts/validate-release-tag.mjs "${{ github.ref_name }}"
+      - uses: actions/download-artifact@v4
+        with:
+          name: private-stream-deck-plugin
+          path: dist
+      - uses: softprops/action-gh-release@v2
+        with:
+          draft: true
+          generate_release_notes: true
+          body: |
+            This private release remains a draft until the attached Windows/WSL acceptance report is completed on real hardware.
+
+            The macOS build is packaged in CI but remains experimental until a real Mac verifies runtime behavior.
+          files: dist/*
