@@ -2,7 +2,16 @@
   const form = document.querySelector("#settings-form");
   const params = new URLSearchParams(location.search);
   const launch = Object.fromEntries(params.entries());
-  const state = { socket: null, settings: {}, context: launch.context, action: launch.action };
+  const state = {
+    socket: null,
+    settings: {},
+    port: launch.port,
+    uiUUID: launch.pluginUUID,
+    registerEvent: launch.registerEvent,
+    pluginUUID: launch.pluginUUID,
+    context: launch.context,
+    action: launch.action,
+  };
   const diagnostics = {
     operationalState: document.querySelector("#operational-state"),
     observationQuality: document.querySelector("#observation-quality"),
@@ -20,12 +29,12 @@
   }
   function sendGlobalSettings(event, payload = {}) {
     if (state.socket?.readyState === WebSocket.OPEN) {
-      state.socket.send(JSON.stringify({ event, context: launch.pluginUUID, ...payload }));
+      state.socket.send(JSON.stringify({ event, context: state.pluginUUID, ...payload }));
     }
   }
   function sendRegistration() {
     if (state.socket?.readyState === WebSocket.OPEN) {
-      state.socket.send(JSON.stringify({ event: launch.registerEvent, uuid: launch.pluginUUID }));
+      state.socket.send(JSON.stringify({ event: state.registerEvent, uuid: state.uiUUID }));
     }
   }
   function readSettings() {
@@ -50,9 +59,11 @@
     diagnostics.observationComparison.textContent = humanize(payload.observationComparison || "unavailable");
     diagnostics.error.textContent = payload.error || "None";
   }
-  function connect() {
-    if (!launch.port || !launch.pluginUUID || !launch.registerEvent) return;
-    state.socket = new WebSocket(`ws://127.0.0.1:${launch.port}`);
+  function connect(connection = {}) {
+    if (state.socket) return;
+    Object.assign(state, connection);
+    if (!state.port || !state.uiUUID || !state.pluginUUID || !state.registerEvent || !state.context || !state.action) return;
+    state.socket = new WebSocket(`ws://127.0.0.1:${state.port}`);
     state.socket.addEventListener("open", () => {
       sendRegistration();
       sendGlobalSettings("getGlobalSettings");
@@ -66,6 +77,20 @@
       } catch { /* Ignore messages outside the inspector protocol. */ }
     });
   }
+  globalThis.connectElgatoStreamDeckSocket = (port, uuid, event, info, actionInfo) => {
+    try {
+      const registration = JSON.parse(info);
+      const action = JSON.parse(actionInfo);
+      connect({
+        port,
+        uiUUID: uuid,
+        registerEvent: event,
+        pluginUUID: registration.plugin?.uuid,
+        context: action.context,
+        action: action.action,
+      });
+    } catch { /* Stream Deck may send malformed launch data while closing the Inspector. */ }
+  };
   form.addEventListener("submit", (event) => {
     event.preventDefault();
     state.settings = { ...state.settings, ...readSettings() };

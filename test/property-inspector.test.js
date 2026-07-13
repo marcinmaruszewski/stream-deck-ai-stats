@@ -20,17 +20,24 @@ test("Property Inspector sends an explicitly scoped Codex request and renders it
     FormData: class { entries() { return []; } },
     URLSearchParams,
     location: {
-      search: "?port=28123&pluginUUID=plugin-id&registerEvent=registerPropertyInspector&context=codex-key&action=com.marcinmaruszewski.ai-usage.codex.short-term",
+      search: "",
     },
     WebSocket: FakeWebSocket,
   });
 
   vm.runInContext(await readFile(inspectorUrl, "utf8"), context, { filename: inspectorUrl.pathname });
+  context.connectElgatoStreamDeckSocket(
+    "28123",
+    "property-inspector-id",
+    "registerPropertyInspector",
+    JSON.stringify({ plugin: { uuid: "plugin-id" } }),
+    JSON.stringify({ context: "codex-key", action: "com.marcinmaruszewski.ai-usage.codex.short-term" }),
+  );
   const socket = FakeWebSocket.instances.at(-1);
   socket.emit("open");
 
   assert.deepEqual(socket.messages.slice(0, 3), [
-    { event: "registerPropertyInspector", uuid: "plugin-id" },
+    { event: "registerPropertyInspector", uuid: "property-inspector-id" },
     { event: "getGlobalSettings", context: "plugin-id" },
     {
       event: "sendToPlugin",
