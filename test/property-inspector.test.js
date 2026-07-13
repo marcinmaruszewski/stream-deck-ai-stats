@@ -28,6 +28,25 @@ test("Property Inspector sends an explicitly scoped Codex request and renders it
   vm.runInContext(await readFile(inspectorUrl, "utf8"), context, { filename: inspectorUrl.pathname });
   const socket = FakeWebSocket.instances.at(-1);
   socket.emit("open");
+
+  assert.deepEqual(socket.messages.slice(0, 3), [
+    { event: "registerPropertyInspector", uuid: "plugin-id" },
+    { event: "getGlobalSettings", context: "plugin-id" },
+    {
+      event: "sendToPlugin",
+      context: "codex-key",
+      action: "com.marcinmaruszewski.ai-usage.codex.short-term",
+      payload: { event: "requestDiagnostics" },
+    },
+  ]);
+
+  elements.get("#settings-form").emit("submit");
+  assert.deepEqual(socket.messages.at(-1), {
+    event: "setGlobalSettings",
+    context: "plugin-id",
+    payload: {},
+  });
+
   elements.get("#request-codex-window-keeping").emit("click");
 
   assert.deepEqual(socket.messages.at(-1), {

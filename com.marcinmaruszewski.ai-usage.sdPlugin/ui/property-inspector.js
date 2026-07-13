@@ -18,6 +18,16 @@
       state.socket.send(JSON.stringify({ event, context: state.context, action: state.action, ...payload }));
     }
   }
+  function sendGlobalSettings(event, payload = {}) {
+    if (state.socket?.readyState === WebSocket.OPEN) {
+      state.socket.send(JSON.stringify({ event, context: launch.pluginUUID, ...payload }));
+    }
+  }
+  function sendRegistration() {
+    if (state.socket?.readyState === WebSocket.OPEN) {
+      state.socket.send(JSON.stringify({ event: launch.registerEvent, uuid: launch.pluginUUID }));
+    }
+  }
   function readSettings() {
     const settings = Object.fromEntries(new FormData(form).entries());
     for (const control of form.elements) if (control.type === "checkbox" && control.name) settings[control.name] = control.checked;
@@ -44,8 +54,8 @@
     if (!launch.port || !launch.pluginUUID || !launch.registerEvent) return;
     state.socket = new WebSocket(`ws://127.0.0.1:${launch.port}`);
     state.socket.addEventListener("open", () => {
-      send(launch.registerEvent, { uuid: launch.pluginUUID });
-      send("getGlobalSettings", { uuid: launch.pluginUUID });
+      sendRegistration();
+      sendGlobalSettings("getGlobalSettings");
       send("sendToPlugin", { payload: { event: "requestDiagnostics" } });
     });
     state.socket.addEventListener("message", ({ data }) => {
@@ -59,7 +69,7 @@
   form.addEventListener("submit", (event) => {
     event.preventDefault();
     state.settings = { ...state.settings, ...readSettings() };
-    send("setGlobalSettings", { payload: state.settings });
+    sendGlobalSettings("setGlobalSettings", { payload: state.settings });
   });
   document.querySelector("#refresh-diagnostics").addEventListener("click", () => send("sendToPlugin", { payload: { event: "requestDiagnostics" } }));
   document.querySelector("#request-codex-window-keeping").addEventListener("click", () => send("sendToPlugin", { payload: { event: "requestCodexWindowKeeping" } }));

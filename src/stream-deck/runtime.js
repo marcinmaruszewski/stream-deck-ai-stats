@@ -7,7 +7,12 @@ import { createCodexWindowKeeper } from "../core/codex-window-keeper.js";
 import { StreamDeckPlugin } from "./plugin.js";
 
 /** Starts the Node 24 Stream Deck websocket boundary without exposing CLI work to the Property Inspector. */
-export function startStreamDeckPlugin({ argv = process.argv.slice(2), WebSocketImpl = globalThis.WebSocket, platform = process.platform } = {}) {
+export function startStreamDeckPlugin({
+  argv = process.argv.slice(2),
+  WebSocketImpl = globalThis.WebSocket,
+  platform = process.platform,
+  providerMarks = loadProviderMarks(),
+} = {}) {
   const launch = parseLaunchArguments(argv);
   if (!launch.port || !launch.pluginUUID || !launch.registerEvent) {
     throw new Error("Stream Deck launch arguments are incomplete");
@@ -24,12 +29,12 @@ export function startStreamDeckPlugin({ argv = process.argv.slice(2), WebSocketI
     core,
     send: (message) => socket.send(JSON.stringify(message)),
     configure: async (settings) => core.configure({ providers: await createConfiguredProviders(settings, { platform }), settings: coreSettings(settings) }),
-    providerMarks: loadProviderMarks(),
+    providerMarks,
   });
 
   socket.addEventListener("open", () => {
     socket.send(JSON.stringify({ event: launch.registerEvent, uuid: launch.pluginUUID }));
-    socket.send(JSON.stringify({ event: "getGlobalSettings", uuid: launch.pluginUUID }));
+    socket.send(JSON.stringify({ event: "getGlobalSettings", context: launch.pluginUUID }));
     core.start();
   });
   socket.addEventListener("message", (message) => {

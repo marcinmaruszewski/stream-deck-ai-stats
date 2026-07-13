@@ -2,10 +2,26 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import { StreamDeckPlugin } from "../src/stream-deck/plugin.js";
-import { resolveProviderTransportConfigurations, resolveTransportConfiguration } from "../src/stream-deck/runtime.js";
+import { resolveProviderTransportConfigurations, resolveTransportConfiguration, startStreamDeckPlugin } from "../src/stream-deck/runtime.js";
 import { actionBinding, renderUsageTile } from "../src/stream-deck/usage-tile.js";
 
 const NOW = new Date("2026-07-13T12:00:00.000Z");
+
+test("requests global settings with the plugin UUID as the Stream Deck context", () => {
+  const plugin = startStreamDeckPlugin({
+    argv: ["-port", "28123", "-pluginUUID", "plugin-id", "-registerEvent", "registerPlugin"],
+    WebSocketImpl: FakePluginWebSocket,
+    providerMarks: {},
+  });
+  const socket = FakePluginWebSocket.instances.at(-1);
+  socket.emit("open");
+
+  assert.deepEqual(socket.messages.slice(0, 2), [
+    { event: "registerPlugin", uuid: "plugin-id" },
+    { event: "getGlobalSettings", context: "plugin-id" },
+  ]);
+  plugin.core.stop();
+});
 
 test("renders the accepted usage-tile hierarchy with pace and stale badges", () => {
   const image = renderUsageTile({
@@ -129,3 +145,25 @@ test("discovers the Codex and Claude environments independently", async () => {
     claude: { mode: "wsl", wsl: { distribution: "Ubuntu-24.04" } },
   });
 });
+
+class FakePluginWebSocket {
+  static instances = [];
+  #listeners = new Map();
+
+  constructor() {
+    this.messages = [];
+    FakePluginWebSocket.instances.push(this);
+  }
+
+  addEventListener(event, listener) {
+    this.#listeners.set(event, listener);
+  }
+
+  send(message) {
+    this.messages.push(JSON.parse(message));
+  }
+
+  emit(event, payload = {}) {
+    this.#listeners.get(event)?.(payload);
+  }
+}
