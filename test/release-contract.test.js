@@ -3,12 +3,14 @@ import assert from "node:assert/strict";
 
 import {
   assertRequiredInstallerEntries,
+  assertManifestCategoryIcon,
   assertSafeEntryPaths,
   ciArtifactVersion,
   credentialValue,
   developmentManifestVersion,
   developmentPackageVersion,
   manifestVersionFor,
+  readPluginManifest,
   renderAcceptanceReport,
   versionFromReleaseTag,
 } from "../scripts/release-contract.mjs";
@@ -43,4 +45,16 @@ test("creates an explicitly unverified per-version Windows and WSL acceptance re
   assert.match(report, /not verified/);
   assert.match(report, /macOS remains experimental/);
   assert.doesNotMatch(report, /credential/i);
+});
+
+test("declares a category icon when it declares a custom category", async () => {
+  const manifest = await readPluginManifest();
+  assert.ok(manifest.Category);
+  assert.equal(manifest.CategoryIcon, "assets/category-icon");
+  assert.doesNotThrow(() => assertManifestCategoryIcon(manifest, ["assets/category-icon.svg"]));
+  assert.throws(() => assertManifestCategoryIcon({ Category: "AI Usage Stats" }, []), /omits CategoryIcon/);
+  assert.throws(
+    () => assertManifestCategoryIcon({ Category: "AI Usage Stats", CategoryIcon: "assets/category-icon" }, []),
+    /category icon is missing/,
+  );
 });

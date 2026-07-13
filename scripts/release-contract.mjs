@@ -45,6 +45,20 @@ export function assertRequiredInstallerEntries(entries) {
   }
 }
 
+export function assertManifestCategoryIcon(manifest, entries) {
+  if (!manifest.Category) return;
+  if (typeof manifest.CategoryIcon !== "string" || manifest.CategoryIcon.length === 0) {
+    throw new Error("Plugin manifest declares Category but omits CategoryIcon");
+  }
+  if (extname(manifest.CategoryIcon)) {
+    throw new Error("Plugin manifest CategoryIcon must omit its file extension");
+  }
+  const iconPaths = [".png", ".svg"].map((extension) => `${manifest.CategoryIcon}${extension}`);
+  if (!iconPaths.some((path) => entries.includes(path))) {
+    throw new Error(`Plugin category icon is missing: expected one of ${iconPaths.join(", ")}`);
+  }
+}
+
 export function isTextEntry(path) {
   return textExtension.has(extname(path).toLowerCase());
 }
@@ -75,6 +89,7 @@ export async function validatePluginContract(root = repositoryRoot) {
 
   const entries = await listFiles(join(root, "com.marcinmaruszewski.ai-usage.sdPlugin"));
   assertSafeEntryPaths(entries);
+  assertManifestCategoryIcon(manifest, entries);
   return { manifestVersion: manifest.Version, entries };
 }
 
