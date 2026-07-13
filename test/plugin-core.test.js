@@ -388,10 +388,11 @@ test("reads usage snapshots in the selected native or WSL environment", async ()
   ]]);
 });
 
-test("uses the native macOS CLI and rejects cancelled or timed out commands", async () => {
+test("simulates the native macOS CLI and rejects cancelled or timed out commands", async () => {
   const children = [];
   const transport = createPlatformProcessTransport({
     platform: "darwin",
+    inheritedEnv: { PATH: "/usr/local/bin" },
     defaultTimeoutMs: 5,
     spawn: (...args) => {
       const child = fakeChild();
@@ -405,7 +406,7 @@ test("uses the native macOS CLI and rejects cancelled or timed out commands", as
   await assert.rejects(cancelled, { name: "AbortError" });
   assert.equal(children[0].args[0], "codex");
   assert.deepEqual(children[0].args[1], []);
-  assert.equal(children[0].args[2].env.PATH, process.env.PATH);
+  assert.equal(children[0].args[2].env.PATH, "/usr/local/bin");
   assert.equal(children[0].args[2].windowsHide, false);
   assert.equal(children[0].args[2].shell, false);
   assert.equal(children[0].child.killCalls, 1);
