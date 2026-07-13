@@ -38,10 +38,10 @@ test("Property Inspector sends an explicitly scoped Codex request and renders it
 
   assert.deepEqual(socket.messages.slice(0, 3), [
     { event: "registerPropertyInspector", uuid: "property-inspector-id" },
-    { event: "getGlobalSettings", context: "plugin-id" },
+    { event: "getGlobalSettings", context: "property-inspector-id" },
     {
       event: "sendToPlugin",
-      context: "codex-key",
+      context: "property-inspector-id",
       action: "com.marcinmaruszewski.ai-usage.codex.short-term",
       payload: { event: "requestDiagnostics" },
     },
@@ -50,7 +50,7 @@ test("Property Inspector sends an explicitly scoped Codex request and renders it
   elements.get("#settings-form").emit("submit");
   assert.deepEqual(socket.messages.at(-1), {
     event: "setGlobalSettings",
-    context: "plugin-id",
+    context: "property-inspector-id",
     payload: {},
   });
 
@@ -58,7 +58,7 @@ test("Property Inspector sends an explicitly scoped Codex request and renders it
 
   assert.deepEqual(socket.messages.at(-1), {
     event: "sendToPlugin",
-    context: "codex-key",
+    context: "property-inspector-id",
     action: "com.marcinmaruszewski.ai-usage.codex.short-term",
     payload: { event: "requestCodexWindowKeeping" },
   });

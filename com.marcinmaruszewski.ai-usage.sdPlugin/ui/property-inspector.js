@@ -8,8 +8,6 @@
     port: launch.port,
     uiUUID: launch.pluginUUID,
     registerEvent: launch.registerEvent,
-    pluginUUID: launch.pluginUUID,
-    context: launch.context,
     action: launch.action,
   };
   const diagnostics = {
@@ -24,12 +22,12 @@
 
   function send(event, payload = {}) {
     if (state.socket?.readyState === WebSocket.OPEN) {
-      state.socket.send(JSON.stringify({ event, context: state.context, action: state.action, ...payload }));
+      state.socket.send(JSON.stringify({ event, context: state.uiUUID, action: state.action, ...payload }));
     }
   }
   function sendGlobalSettings(event, payload = {}) {
     if (state.socket?.readyState === WebSocket.OPEN) {
-      state.socket.send(JSON.stringify({ event, context: state.pluginUUID, ...payload }));
+      state.socket.send(JSON.stringify({ event, context: state.uiUUID, ...payload }));
     }
   }
   function sendRegistration() {
@@ -62,7 +60,7 @@
   function connect(connection = {}) {
     if (state.socket) return;
     Object.assign(state, connection);
-    if (!state.port || !state.uiUUID || !state.pluginUUID || !state.registerEvent || !state.context || !state.action) return;
+    if (!state.port || !state.uiUUID || !state.registerEvent || !state.action) return;
     state.socket = new WebSocket(`ws://127.0.0.1:${state.port}`);
     state.socket.addEventListener("open", () => {
       sendRegistration();
@@ -79,14 +77,11 @@
   }
   globalThis.connectElgatoStreamDeckSocket = (port, uuid, event, info, actionInfo) => {
     try {
-      const registration = JSON.parse(info);
       const action = JSON.parse(actionInfo);
       connect({
         port,
         uiUUID: uuid,
         registerEvent: event,
-        pluginUUID: registration.plugin?.uuid,
-        context: action.context,
         action: action.action,
       });
     } catch { /* Stream Deck may send malformed launch data while closing the Inspector. */ }
