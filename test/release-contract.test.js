@@ -2,20 +2,26 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import {
-  assertReleaseTag,
   assertRequiredInstallerEntries,
   assertSafeEntryPaths,
+  ciArtifactVersion,
   credentialValue,
+  developmentManifestVersion,
+  developmentPackageVersion,
   manifestVersionFor,
   renderAcceptanceReport,
+  versionFromReleaseTag,
 } from "../scripts/release-contract.mjs";
 
-test("maps the single SemVer source to the Stream Deck manifest version", () => {
+test("derives installer versions from release tags rather than package metadata", () => {
   assert.equal(manifestVersionFor("1.2.3"), "1.2.3.0");
-  assert.equal(manifestVersionFor("1.2.3-rc.1"), "1.2.3.0");
-  assert.throws(() => manifestVersionFor("1.2"), /SemVer/);
-  assert.doesNotThrow(() => assertReleaseTag("v1.2.3", "1.2.3"));
-  assert.throws(() => assertReleaseTag("v1.2.4", "1.2.3"), /must be v1.2.3/);
+  assert.equal(versionFromReleaseTag("v1.2.3"), "1.2.3");
+  assert.equal(ciArtifactVersion({ refType: "tag", refName: "v1.2.3", runNumber: "42" }), "1.2.3");
+  assert.equal(ciArtifactVersion({ refType: "branch", refName: "master", runNumber: "42" }), "0.0.42");
+  assert.throws(() => manifestVersionFor("1.2"), /X.Y.Z/);
+  assert.throws(() => versionFromReleaseTag("v1.2.3-rc.1"), /X.Y.Z/);
+  assert.equal(developmentPackageVersion, "0.0.0");
+  assert.equal(developmentManifestVersion, "0.0.0.0");
 });
 
 test("accepts only an installer with its runtime assets and no secret-bearing paths", () => {

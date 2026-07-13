@@ -6,20 +6,29 @@ export const repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), "
 export const pluginDirectory = join(repositoryRoot, "com.marcinmaruszewski.ai-usage.sdPlugin");
 export const distributionDirectory = join(repositoryRoot, "dist");
 
-const semver = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/;
+const releaseVersion = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/;
 const forbiddenPath = /(^|\/)(?:\.env(?:\..*)?|[^/]*(?:credential|secret|snapshot|cache)[^/]*|[^/]*\.log|[^/]*\.map)(?:\/|$)/i;
 const textExtension = new Set(["", ".css", ".html", ".js", ".json", ".md", ".txt"]);
 export const credentialValue = /(?:"(?:access_|refresh_)?token"\s*:\s*"[^"\s]+"|"api[_-]?key"\s*:\s*"[^"\s]+"|\bsk-[A-Za-z0-9_-]{12,}\b)/i;
+export const developmentPackageVersion = "0.0.0";
+export const developmentManifestVersion = "0.0.0.0";
 
-export function manifestVersionFor(packageVersion) {
-  if (!semver.test(packageVersion)) throw new Error(`package.json version must be SemVer, received ${packageVersion}`);
-  const [core] = packageVersion.split(/[+-]/, 1);
-  return `${core}.0`;
+export function manifestVersionFor(version) {
+  if (!releaseVersion.test(version)) throw new Error(`Release version must be X.Y.Z, received ${version}`);
+  return `${version}.0`;
 }
 
-export function assertReleaseTag(tag, packageVersion) {
-  const expected = `v${packageVersion}`;
-  if (tag !== expected) throw new Error(`Release tag must be ${expected}, received ${tag}`);
+export function versionFromReleaseTag(tag) {
+  if (typeof tag !== "string" || !tag.startsWith("v")) throw new Error(`Release tag must be vX.Y.Z, received ${tag}`);
+  const version = tag.slice(1);
+  manifestVersionFor(version);
+  return version;
+}
+
+export function ciArtifactVersion({ refType, refName, runNumber }) {
+  if (refType === "tag") return versionFromReleaseTag(refName);
+  if (!/^[1-9]\d*$/.test(String(runNumber))) throw new Error(`CI run number must be a positive integer, received ${runNumber}`);
+  return `0.0.${runNumber}`;
 }
 
 export function assertSafeEntryPaths(entries) {
@@ -40,17 +49,19 @@ export function isTextEntry(path) {
   return textExtension.has(extname(path).toLowerCase());
 }
 
-export async function readReleaseMetadata(root = repositoryRoot) {
-  const packageMetadata = JSON.parse(await readFile(join(root, "package.json"), "utf8"));
+export async function readPluginManifest(root = repositoryRoot) {
   const manifest = JSON.parse(await readFile(join(root, "com.marcinmaruszewski.ai-usage.sdPlugin", "manifest.json"), "utf8"));
-  return { packageMetadata, manifest };
+  return manifest;
 }
 
 export async function validatePluginContract(root = repositoryRoot) {
-  const { packageMetadata, manifest } = await readReleaseMetadata(root);
-  const expectedManifestVersion = manifestVersionFor(packageMetadata.version);
-  if (manifest.Version !== expectedManifestVersion) {
-    throw new Error(`manifest.json Version must be ${expectedManifestVersion} to match package.json ${packageMetadata.version}`);
+  const packageMetadata = JSON.parse(await readFile(join(root, "package.json"), "utf8"));
+  if (packageMetadata.version !== developmentPackageVersion) {
+    throw new Error(`package.json version must remain the development placeholder ${developmentPackageVersion}`);
+  }
+  const manifest = await readPluginManifest(root);
+  if (manifest.Version !== developmentManifestVersion) {
+    throw new Error(`Source manifest.json Version must remain the development placeholder ${developmentManifestVersion}`);
   }
 
   const requiredPaths = ["manifest.json", "bin/plugin.js", "ui/property-inspector.html", "ui/property-inspector.js"];
@@ -64,7 +75,7 @@ export async function validatePluginContract(root = repositoryRoot) {
 
   const entries = await listFiles(join(root, "com.marcinmaruszewski.ai-usage.sdPlugin"));
   assertSafeEntryPaths(entries);
-  return { packageVersion: packageMetadata.version, manifestVersion: manifest.Version, entries };
+  return { manifestVersion: manifest.Version, entries };
 }
 
 export async function listFiles(directory, base = directory) {

@@ -30,9 +30,10 @@ jobs:
       - name: Validate and package this platform lane
         shell: bash
         run: |
+          VERSION="$(node scripts/ci-artifact-version.mjs)"
           mkdir -p platform-dist
           streamdeck validate com.marcinmaruszewski.ai-usage.sdPlugin --no-update-check
-          streamdeck pack com.marcinmaruszewski.ai-usage.sdPlugin --output platform-dist --force --no-update-check
+          streamdeck pack com.marcinmaruszewski.ai-usage.sdPlugin --output platform-dist --version "${VERSION}.0" --force --no-update-check
 
   package:
     name: Create private installer
@@ -44,7 +45,7 @@ jobs:
         with:
           node-version: 24
       - run: npm install --global @elgato/cli@1.7.4
-      - run: npm run package
+      - run: npm run package -- "$(node scripts/ci-artifact-version.mjs)"
       - uses: actions/upload-artifact@v4
         with:
           name: private-stream-deck-plugin
