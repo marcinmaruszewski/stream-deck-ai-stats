@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "test": "node --test test/*.test.js",
-    "check": "node --check src/core/*.js && node --check src/stream-deck/*.js",
+    "check": "node scripts/check-syntax.mjs",
     "bundle": "node scripts/bundle-plugin.mjs",
     "validate:plugin": "node scripts/validate-plugin.mjs",
     "verify": "npm run check && npm test && npm run bundle && npm run validate:plugin",
