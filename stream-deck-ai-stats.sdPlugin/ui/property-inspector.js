@@ -14,7 +14,9 @@
   };
 
   function send(event, payload = {}) {
-    if (state.socket?.readyState === WebSocket.OPEN) state.socket.send(JSON.stringify({ event, context: state.context, ...payload }));
+    if (state.socket?.readyState === WebSocket.OPEN) {
+      state.socket.send(JSON.stringify({ event, context: state.context, action: state.action, ...payload }));
+    }
   }
   function readSettings() {
     const settings = Object.fromEntries(new FormData(form).entries());
