@@ -68,6 +68,44 @@ test("forwards non-secret global Property Inspector settings to the backend conf
   assert.deepEqual(configurations, [{ transportMode: "wsl", wslDistribution: "Ubuntu-24.04", codexExecutable: "codex" }]);
 });
 
+test("routes an explicit Codex window-keeping request and returns its separate diagnostics", async () => {
+  const messages = [];
+  let requests = 0;
+  const lifecycle = {
+    onWillAppear: async () => {},
+    onSystemDidWakeUp: async () => {},
+    requestWindowKeeping: async (provider) => { requests += 1; assert.equal(provider, "codex"); },
+  };
+  const plugin = new StreamDeckPlugin({ core: lifecycle, send: (message) => messages.push(message) });
+  plugin.publish({
+    provider: "codex",
+    operationalState: "normal",
+    windowActivity: "unknown",
+    windowKeepingAction: { status: "completed", observationComparison: "unchanged" },
+    windows: [{ windowKind: "short-term", quality: "fresh", resetAt: NOW }],
+  });
+
+  await plugin.handleEvent({
+    event: "sendToPlugin",
+    action: "com.marcinmaruszewski.ai-usage.codex.short-term",
+    context: "codex-five-hour",
+    payload: { event: "requestCodexWindowKeeping" },
+  });
+
+  assert.equal(requests, 1);
+  assert.deepEqual(messages.at(-1).payload, {
+    provider: "codex",
+    windowKind: "short-term",
+    operationalState: "normal",
+    observationQuality: "fresh",
+    error: null,
+    resetAt: NOW.toISOString(),
+    windowActivity: "unknown",
+    windowKeepingAction: "completed",
+    observationComparison: "unchanged",
+  });
+});
+
 test("automatically selects a discovered WSL distribution when native Codex is unavailable", async () => {
   const configuration = await resolveTransportConfiguration(
     { transportMode: "auto" },

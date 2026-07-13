@@ -26,6 +26,6 @@ Show these independently:
 
 Never label a window active or inactive from an inferred or incomplete usage observation.
 
-## Local impact
+## Implementation status
 
-`createCodexWindowKeeper().getActivityVerdict()` currently calls any short-term observation with a `Date` `resetAt` `active`. That is an unsupported inference; the implementation needs a follow-up change to return `unknown` for this data and expose the explicit-action state instead.
+Resolved by [Implement explicit user-triggered Codex window keeping](https://github.com/marcinmaruszewski/stream-deck-ai-stats/issues/18): `createCodexWindowKeeper().getActivityVerdict()` always returns `unknown`; scheduled refreshes cannot start a turn; and the Property Inspector sends a distinct manual request that reports the action status and before/after observation comparison.

@@ -6,29 +6,22 @@ const PROMPT = "Reply with exactly OK. Do not use tools.";
 const DEFAULT_MODEL = "gpt-5.6-luna";
 
 /**
- * Performs the explicitly enabled Codex interaction used to start an inactive
- * short-term usage window. The usage reader remains the authoritative source
- * for its activity verdict and for the post-turn observation.
+ * Performs an explicitly user-triggered Codex interaction. Rate limits do not
+ * report whether a usage window is active, so this action never infers one.
  */
 export function createCodexWindowKeeper({
   transport,
-  usageReader,
   createWorkDirectory = () => mkdtemp(join(tmpdir(), "stream-deck-ai-stats-")),
   removeWorkDirectory = (path) => rm(path, { recursive: true, force: true }),
 } = {}) {
   if (typeof transport?.execute !== "function") throw new Error("Codex WindowKeeper requires a ProcessTransport");
-  if (typeof usageReader?.read !== "function") throw new Error("Codex WindowKeeper requires a UsageReader");
   if (typeof createWorkDirectory !== "function" || typeof removeWorkDirectory !== "function") {
     throw new Error("Codex WindowKeeper requires temporary-directory lifecycle functions");
   }
 
   return Object.freeze({
     async getActivityVerdict() {
-      const observations = await usageReader.read();
-      if (!Array.isArray(observations)) throw new Error("Codex UsageReader must return an observation list");
-      const shortTerm = observations.find((observation) => observation?.windowKind === "short-term");
-      if (!shortTerm) return "unknown";
-      return shortTerm.resetAt instanceof Date ? "active" : "unknown";
+      return "unknown";
     },
 
     async keepWindow({ model } = {}) {

@@ -62,7 +62,7 @@ export async function createConfiguredProviders(settings = {}, { platform = proc
         id: "codex",
         transport: codexTransport,
         usageReader: codexUsageReader,
-        windowKeeper: createCodexWindowKeeper({ transport: codexTransport, usageReader: codexUsageReader }),
+        windowKeeper: createCodexWindowKeeper({ transport: codexTransport }),
       }),
       createProviderAdapter({
         id: "claude",
@@ -106,7 +106,6 @@ function coreSettings(settings) {
     ...settings,
     codex: {
       ...settings.codex,
-      windowKeepingEnabled: settings.codexWindowKeepingEnabled === true,
       ...(typeof settings.codexWindowKeepingModel === "string" && settings.codexWindowKeepingModel.length > 0
         ? { windowKeepingModel: settings.codexWindowKeepingModel }
         : {}),

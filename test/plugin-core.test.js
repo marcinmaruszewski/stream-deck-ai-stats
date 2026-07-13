@@ -34,6 +34,8 @@ test("publishes fresh provider observations with a pace forecast", async () => {
   assert.deepEqual(states.at(-1), {
     provider: "codex",
     operationalState: "normal",
+    windowActivity: "unknown",
+    windowKeepingAction: { status: "not-enabled", observationComparison: "unavailable" },
     windows: [{
       provider: "codex",
       windowKind: "short-term",
@@ -132,16 +134,13 @@ test("recovers replaced provider transports before applying new Property Inspect
   assert.deepEqual(lifecycle, ["recover-old", "read-new"]);
 });
 
-test("keeps a window only when explicitly enabled and provider-confirmed inactive", async () => {
+test("never starts a Codex turn during scheduled usage refreshes", async () => {
   let interactions = 0;
   const core = new PluginCore({
     providers: [{
       id: "codex",
       usageReader: { read: async () => [observation()] },
-      windowKeeper: {
-        getActivityVerdict: async () => "inactive",
-        keepWindow: async () => { interactions += 1; return { completed: true }; },
-      },
+      windowKeeper: { getActivityVerdict: async () => "inactive", keepWindow: async () => { interactions += 1; return { completed: true }; } },
     }],
     now: () => NOW,
     settings: { codex: { windowKeepingEnabled: true } },
@@ -149,33 +148,33 @@ test("keeps a window only when explicitly enabled and provider-confirmed inactiv
 
   await core.runCycle();
 
-  assert.equal(interactions, 1);
-  assert.equal(core.stateFor("codex").operationalState, "window-keeping");
+  assert.equal(interactions, 0);
+  assert.equal(core.stateFor("codex").windowActivity, "unknown");
 });
 
-test("refreshes usage after a validated window-keeping turn", async () => {
+test("runs one explicitly requested turn and records the post-action observation comparison", async () => {
   let reads = 0;
   const core = new PluginCore({
     providers: [{
       id: "codex",
       usageReader: { read: async () => { reads += 1; return [observation({ usageProgress: reads / 10 })]; } },
-      windowKeeper: {
-        getActivityVerdict: async () => "inactive",
-        keepWindow: async () => ({ completed: true }),
-      },
+      windowKeeper: { getActivityVerdict: async () => "inactive", keepWindow: async () => ({ completed: true }) },
     }],
     now: () => NOW,
     settings: { codex: { windowKeepingEnabled: true } },
   });
 
-  await core.runCycle();
+  await core.refreshProvider("codex");
+  await core.requestWindowKeeping("codex");
 
   assert.equal(reads, 2);
   assert.equal(core.stateFor("codex").windows[0].usageProgress, 0.2);
-  assert.equal(core.stateFor("codex").operationalState, "window-keeping");
+  assert.equal(core.stateFor("codex").operationalState, "normal");
+  assert.equal(core.stateFor("codex").windowActivity, "unknown");
+  assert.deepEqual(core.stateFor("codex").windowKeepingAction, { status: "completed", observationComparison: "changed" });
 });
 
-test("retains the usage-read error when the post-turn observation fails", async () => {
+test("retains an unavailable post-turn observation without masking the completed action", async () => {
   let reads = 0;
   const core = new PluginCore({
     providers: [{
@@ -187,22 +186,21 @@ test("retains the usage-read error when the post-turn observation fails", async 
           return [observation()];
         },
       },
-      windowKeeper: {
-        getActivityVerdict: async () => "inactive",
-        keepWindow: async () => ({ completed: true }),
-      },
+      windowKeeper: { getActivityVerdict: async () => "inactive", keepWindow: async () => ({ completed: true }) },
     }],
     now: () => NOW,
     settings: { codex: { windowKeepingEnabled: true } },
   });
 
-  await core.runCycle();
+  await core.refreshProvider("codex");
+  await core.requestWindowKeeping("codex");
 
   assert.equal(core.stateFor("codex").operationalState, "error");
   assert.equal(core.stateFor("codex").windows[0].quality, "stale");
+  assert.deepEqual(core.stateFor("codex").windowKeepingAction, { status: "completed", observationComparison: "unavailable" });
 });
 
-test("reports an unavailable configured window-keeping model explicitly", async () => {
+test("reports an unavailable configured window-keeping model after an explicit request", async () => {
   const core = new PluginCore({
     providers: [{
       id: "codex",
@@ -213,60 +211,45 @@ test("reports an unavailable configured window-keeping model explicitly", async 
       },
     }],
     now: () => NOW,
-    settings: { codex: { windowKeepingEnabled: true, windowKeepingModel: "not-available" } },
-    wait: async () => { throw new Error("The unavailable model must not retry"); },
+    settings: { codex: { windowKeepingModel: "not-available" } },
   });
 
-  await core.runCycle();
+  await core.requestWindowKeeping("codex");
 
   assert.equal(core.stateFor("codex").errorCode, "model-unavailable");
   assert.equal(core.stateFor("codex").error, "Configured window-keeping model is unavailable");
+  assert.equal(core.stateFor("codex").windowKeepingAction.status, "failed");
 });
 
-test("retries a failed window-keeping interaction using the configured backoff", async () => {
+test("does not retry a failed explicit window-keeping action", async () => {
   let attempts = 0;
-  const waits = [];
   const core = new PluginCore({
     providers: [{
       id: "codex",
       usageReader: { read: async () => [observation()] },
-      windowKeeper: {
-        getActivityVerdict: async () => "inactive",
-        keepWindow: async () => {
-          attempts += 1;
-          if (attempts === 1) throw new Error("temporary provider outage");
-          return { completed: true };
-        },
-      },
+      windowKeeper: { getActivityVerdict: async () => "inactive", keepWindow: async () => { attempts += 1; throw new Error("temporary provider outage"); } },
     }],
     now: () => NOW,
-    settings: { codex: { windowKeepingEnabled: true } },
-    wait: async (milliseconds) => waits.push(milliseconds),
   });
 
-  await core.runCycle();
+  await core.requestWindowKeeping("codex");
 
-  assert.equal(attempts, 2);
-  assert.deepEqual(waits, [30 * 1000]);
-  assert.equal(core.stateFor("codex").operationalState, "window-keeping");
+  assert.equal(attempts, 1);
+  assert.equal(core.stateFor("codex").windowKeepingAction.status, "failed");
 });
 
-test("prevents concurrent checks from starting duplicate window-keeping interactions", async () => {
+test("prevents concurrent manual requests from starting duplicate window-keeping interactions", async () => {
   let interactions = 0;
   const core = new PluginCore({
     providers: [{
       id: "codex",
       usageReader: { read: async () => [observation()] },
-      windowKeeper: {
-        getActivityVerdict: async () => "inactive",
-        keepWindow: async () => { interactions += 1; return { completed: true }; },
-      },
+      windowKeeper: { getActivityVerdict: async () => "inactive", keepWindow: async () => { interactions += 1; return { completed: true }; } },
     }],
     now: () => NOW,
-    settings: { codex: { windowKeepingEnabled: true } },
   });
 
-  await Promise.all([core.runCycle(), core.runCycle()]);
+  await Promise.all([core.requestWindowKeeping("codex"), core.requestWindowKeeping("codex")]);
 
   assert.equal(interactions, 1);
 });
@@ -309,7 +292,7 @@ test("keeps cached observations stale and visible when lifecycle recovery fails"
   }
 });
 
-test("reports unsupported window keeping without treating usage monitoring as an error", async () => {
+test("does not report unsupported window keeping unless the user requests an action", async () => {
   const core = new PluginCore({
     providers: [{ id: "claude", usageReader: { read: async () => [observation({ provider: "claude" })] } }],
     now: () => NOW,
@@ -318,7 +301,7 @@ test("reports unsupported window keeping without treating usage monitoring as an
 
   await core.runCycle();
 
-  assert.equal(core.stateFor("claude").operationalState, "unsupported");
+  assert.equal(core.stateFor("claude").operationalState, "normal");
   assert.equal(core.stateFor("claude").windows[0].quality, "fresh");
 });
 

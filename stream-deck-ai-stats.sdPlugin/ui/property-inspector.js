@@ -7,6 +7,9 @@
     operationalState: document.querySelector("#operational-state"),
     observationQuality: document.querySelector("#observation-quality"),
     resetAt: document.querySelector("#reset-at"),
+    windowActivity: document.querySelector("#window-activity"),
+    windowKeepingAction: document.querySelector("#window-keeping-action"),
+    observationComparison: document.querySelector("#observation-comparison"),
     error: document.querySelector("#last-error"),
   };
 
@@ -30,6 +33,9 @@
     diagnostics.operationalState.textContent = payload.operationalState || "Waiting for a usage observation";
     diagnostics.observationQuality.textContent = payload.observationQuality || "Unknown";
     diagnostics.resetAt.textContent = payload.resetAt ? new Date(payload.resetAt).toLocaleString() : "Unavailable";
+    diagnostics.windowActivity.textContent = humanize(payload.windowActivity || "unknown");
+    diagnostics.windowKeepingAction.textContent = humanize(payload.windowKeepingAction || "not-enabled");
+    diagnostics.observationComparison.textContent = humanize(payload.observationComparison || "unavailable");
     diagnostics.error.textContent = payload.error || "None";
   }
   function connect() {
@@ -54,5 +60,10 @@
     send("setGlobalSettings", { payload: state.settings });
   });
   document.querySelector("#refresh-diagnostics").addEventListener("click", () => send("sendToPlugin", { payload: { event: "requestDiagnostics" } }));
+  document.querySelector("#request-codex-window-keeping").addEventListener("click", () => send("sendToPlugin", { payload: { event: "requestCodexWindowKeeping" } }));
   connect();
+
+  function humanize(value) {
+    return String(value).replace(/-/g, " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
+  }
 })();

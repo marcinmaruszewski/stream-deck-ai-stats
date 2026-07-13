@@ -37,9 +37,9 @@
 
         <fieldset>
           <legend>Codex window keeping</legend>
-          <label><input type="checkbox" name="codexWindowKeepingEnabled"> Keep an inactive short-term usage window active</label>
           <label>Model override <input name="codexWindowKeepingModel" autocomplete="off" placeholder="Use the lightweight built-in default"></label>
-          <p class="hint">Optional. This runs a real, minimal Codex turn and consumes plan usage.</p>
+          <p class="hint">Run this only when you choose to make a real, minimal Codex turn. It consumes plan usage and cannot prove a usage window is active.</p>
+          <button id="request-codex-window-keeping" type="button">Run minimal Codex turn</button>
         </fieldset>
 
         <button type="submit">Save settings</button>
@@ -51,6 +51,9 @@
           <div><dt>Operational state</dt><dd id="operational-state">Waiting for a usage observation</dd></div>
           <div><dt>Observation quality</dt><dd id="observation-quality">Unknown</dd></div>
           <div><dt>Reset time</dt><dd id="reset-at">Unavailable</dd></div>
+          <div><dt>Window activity</dt><dd id="window-activity">Unknown</dd></div>
+          <div><dt>Window-keeping action</dt><dd id="window-keeping-action">Not enabled</dd></div>
+          <div><dt>Before / after observation</dt><dd id="observation-comparison">Unavailable</dd></div>
           <div><dt>Last error</dt><dd id="last-error">None</dd></div>
         </dl>
       </section>

@@ -72,7 +72,6 @@ test("fails closed on an unknown window verdict and validates a minimal Codex tu
   const commands = [];
   const directories = [];
   const keeper = createCodexWindowKeeper({
-    usageReader: { read: async () => [] },
     transport: {
       execute: async (command) => {
         commands.push(command);

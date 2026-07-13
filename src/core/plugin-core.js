@@ -2,30 +2,26 @@ import { normalizeObservation, staleObservation } from "./usage-model.js";
 import { createProviderAdapter, providerCapabilities } from "./contracts.js";
 
 const FOUR_MINUTES = 4 * 60 * 1000;
-const FIFTEEN_MINUTES = 15 * 60 * 1000;
-const RETRY_DELAYS = [30 * 1000, 2 * 60 * 1000];
 
 export class PluginCore {
   #providers;
   #states = new Map();
   #inFlight = new Map();
-  #windowChecks = new Map();
+  #manualWindowActions = new Map();
   #recoveries = new Map();
-  #cooldowns = new Map();
   #timer;
 
-  constructor({ providers, now = () => new Date(), freshnessMs = 15 * 60 * 1000, settings = {}, ui = {}, wait = delay }) {
+  constructor({ providers, now = () => new Date(), freshnessMs = 15 * 60 * 1000, settings = {}, ui = {} }) {
     this.#providers = providerMap(providers);
     this.now = now;
     this.freshnessMs = freshnessMs;
     this.settings = settings;
     this.ui = ui;
-    this.wait = wait;
   }
 
   async configure({ providers, settings = {} } = {}) {
     await Promise.allSettled([...this.#providers.values()].map((provider) => provider.recover?.()));
-    await Promise.allSettled([...this.#inFlight.values(), ...this.#windowChecks.values()]);
+    await Promise.allSettled([...this.#inFlight.values(), ...this.#manualWindowActions.values()]);
     this.#providers = providerMap(providers);
     this.settings = settings;
     for (const providerId of this.#states.keys()) {
@@ -35,7 +31,13 @@ export class PluginCore {
   }
 
   stateFor(providerId) {
-    return this.#states.get(providerId) ?? { provider: providerId, operationalState: "normal", windows: [] };
+    return this.#states.get(providerId) ?? {
+      provider: providerId,
+      operationalState: "normal",
+      windowActivity: "unknown",
+      windowKeepingAction: { status: "not-enabled", observationComparison: "unavailable" },
+      windows: [],
+    };
   }
 
   async refreshProvider(providerId) {
@@ -47,7 +49,13 @@ export class PluginCore {
 
   async runCycle() {
     await Promise.all([...this.#providers.keys()].map((id) => this.refreshProvider(id)));
-    await Promise.all([...this.#providers.keys()].map((id) => this.#checkWindowKeeping(id)));
+  }
+
+  async requestWindowKeeping(providerId) {
+    if (this.#manualWindowActions.has(providerId)) return this.#manualWindowActions.get(providerId);
+    const work = this.#runManualWindowKeeping(providerId).finally(() => this.#manualWindowActions.delete(providerId));
+    this.#manualWindowActions.set(providerId, work);
+    return work;
   }
 
   start() {
@@ -76,7 +84,8 @@ export class PluginCore {
     try {
       const observations = await provider.usageReader.read();
       if (!Array.isArray(observations)) throw new Error("UsageReader must return an observation list");
-      const previousWindows = this.stateFor(providerId).windows;
+      const previousState = this.stateFor(providerId);
+      const previousWindows = previousState.windows;
       const windows = observations.map((observation) => {
         const normalized = normalizeObservation(
           { ...observation, provider: providerId },
@@ -87,7 +96,7 @@ export class PluginCore {
           ? { ...normalized, resetDiscontinuity: true }
           : normalized;
       });
-      this.#publish({ provider: providerId, operationalState: "normal", windows });
+      this.#publish({ ...previousState, provider: providerId, operationalState: "normal", windows });
       return true;
     } catch (error) {
       this.#publishFailure(providerId, usageReadFailure(error));
@@ -106,7 +115,7 @@ export class PluginCore {
       }
     }))).filter(Boolean);
     await Promise.all(availableProviders.map((id) => this.refreshProvider(id)));
-    return Promise.all(availableProviders.map((id) => this.#checkWindowKeeping(id)));
+    return undefined;
   }
 
   #recreateSchedule() {
@@ -122,56 +131,60 @@ export class PluginCore {
     return recovery;
   }
 
-  async #checkWindowKeeping(providerId) {
-    if (this.#windowChecks.has(providerId)) return this.#windowChecks.get(providerId);
-    const work = this.#runWindowKeeping(providerId).finally(() => this.#windowChecks.delete(providerId));
-    this.#windowChecks.set(providerId, work);
-    return work;
-  }
-
-  async #runWindowKeeping(providerId) {
+  async #runManualWindowKeeping(providerId) {
     const provider = this.#provider(providerId);
-    if (!this.settings[providerId]?.windowKeepingEnabled) return;
     if (!providerCapabilities(provider).windowKeeping) {
-      this.#publish({ ...this.stateFor(providerId), operationalState: "unsupported" });
-      return;
+      this.#publish({
+        ...this.stateFor(providerId),
+        operationalState: "unsupported",
+        windowKeepingAction: { status: "not-enabled", observationComparison: "unavailable" },
+      });
+      return { completed: false };
     }
 
+    const before = shortTermWindow(this.stateFor(providerId).windows);
+    this.#publish({
+      ...this.stateFor(providerId),
+      operationalState: "window-keeping",
+      windowActivity: "unknown",
+      windowKeepingAction: { status: "requested", observationComparison: "unavailable" },
+    });
     try {
-      const verdict = await provider.windowKeeper.getActivityVerdict();
-      if (verdict === "active") this.#cooldowns.delete(providerId);
-      if (verdict !== "inactive" || this.#inCooldown(providerId)) return;
-
-      await this.#keepWithRetries(providerId, provider.windowKeeper);
-      if (!await this.refreshProvider(providerId)) return;
-      this.#cooldowns.set(providerId, this.now().getTime() + FIFTEEN_MINUTES);
-      this.#publish({ ...this.stateFor(providerId), operationalState: "window-keeping" });
-    } catch (error) {
-      this.#publishFailure(providerId, windowKeepingFailure(error));
-    }
-  }
-
-  async #keepWithRetries(providerId, windowKeeper) {
-    let lastFailure = new Error("Window keeping did not produce a validated completion");
-    for (let attempt = 0; attempt < 3; attempt += 1) {
-      try {
-        const result = await windowKeeper.keepWindow({ provider: providerId, model: this.settings[providerId]?.windowKeepingModel });
-        if (result?.completed === true) return;
-        if (result?.errorCode === "model-unavailable") {
-          throw Object.assign(new Error("Configured window-keeping model is unavailable"), { code: "model-unavailable" });
-        }
-        lastFailure = new Error("Window keeping did not produce a validated completion");
-      } catch (error) {
-        if (error?.code === "model-unavailable") throw error;
-        lastFailure = error instanceof Error ? error : new Error("Window keeping failed");
+      const result = await provider.windowKeeper.keepWindow({
+        provider: providerId,
+        model: this.settings[providerId]?.windowKeepingModel,
+      });
+      if (result?.errorCode === "model-unavailable") {
+        throw Object.assign(new Error("Configured window-keeping model is unavailable"), { code: "model-unavailable" });
       }
-      if (attempt < RETRY_DELAYS.length) await this.wait(RETRY_DELAYS[attempt]);
-    }
-    throw lastFailure;
-  }
+      if (result?.completed !== true) throw new Error("Window keeping did not produce a validated completion");
 
-  #inCooldown(providerId) {
-    return (this.#cooldowns.get(providerId) ?? 0) > this.now().getTime();
+      const refreshed = await this.refreshProvider(providerId);
+      const state = this.stateFor(providerId);
+      this.#publish({
+        ...state,
+        operationalState: refreshed ? "normal" : state.operationalState,
+        windowActivity: "unknown",
+        windowKeepingAction: {
+          status: "completed",
+          observationComparison: refreshed ? compareWindows(before, shortTermWindow(state.windows)) : "unavailable",
+        },
+      });
+      return { completed: true };
+    } catch (error) {
+      const state = this.stateFor(providerId);
+      const failure = windowKeepingFailure(error);
+      this.#publish({
+        ...state,
+        operationalState: "error",
+        windows: state.windows.map(staleObservation),
+        error: failure.message,
+        ...(failure.code ? { errorCode: failure.code } : {}),
+        windowActivity: "unknown",
+        windowKeepingAction: { status: "failed", observationComparison: "unavailable" },
+      });
+      return { completed: false };
+    }
   }
 
   #provider(providerId) {
@@ -221,6 +234,18 @@ function windowKeepingFailure(error) {
   return { message: "Window keeping failed" };
 }
 
+function shortTermWindow(windows) {
+  return windows.find((window) => window.windowKind === "short-term") ?? null;
+}
+
+function compareWindows(before, after) {
+  if (!before || !after) return "unavailable";
+  return before.usageProgress === after.usageProgress
+    && before.resetAt?.getTime() === after.resetAt?.getTime()
+    ? "unchanged"
+    : "changed";
+}
+
 function providerMap(providers) {
   if (!Array.isArray(providers)) throw new Error("PluginCore requires a provider list");
   const adapters = new Map(providers.map((provider) => {
@@ -229,10 +254,6 @@ function providerMap(providers) {
   }));
   if (adapters.size !== providers.length) throw new Error("Provider identifiers must be unique");
   return adapters;
-}
-
-function delay(milliseconds) {
-  return new Promise((resolve) => setTimeout(resolve, milliseconds));
 }
 
 function resetDiscontinuity(previous, current) {

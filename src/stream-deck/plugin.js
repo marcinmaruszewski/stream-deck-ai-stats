@@ -50,6 +50,12 @@ export class StreamDeckPlugin {
     }
     if (event?.event === "sendToPlugin" && event.payload?.event === "requestDiagnostics") {
       this.send({ event: "sendToPropertyInspector", action: event.action, context: event.context, payload: this.diagnosticsFor(event.action) });
+      return;
+    }
+    if (event?.event === "sendToPlugin" && event.payload?.event === "requestCodexWindowKeeping") {
+      if (typeof this.core.requestWindowKeeping !== "function") return;
+      await this.core.requestWindowKeeping("codex");
+      this.send({ event: "sendToPropertyInspector", action: event.action, context: event.context, payload: this.diagnosticsFor(event.action) });
     }
   }
 
@@ -64,6 +70,9 @@ export class StreamDeckPlugin {
       observationQuality: window?.quality ?? "unknown",
       error: state?.error ?? null,
       resetAt: window?.resetAt instanceof Date ? window.resetAt.toISOString() : null,
+      windowActivity: state?.windowActivity ?? "unknown",
+      windowKeepingAction: state?.windowKeepingAction?.status ?? "not-enabled",
+      observationComparison: state?.windowKeepingAction?.observationComparison ?? "unavailable",
     };
   }
 
