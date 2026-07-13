@@ -85,6 +85,23 @@ test("forwards non-secret global Property Inspector settings to the backend conf
   assert.deepEqual(configurations, [{ transportMode: "wsl", wslDistribution: "Ubuntu-24.04", codexExecutable: "codex" }]);
 });
 
+test("returns stored global settings when a Property Inspector requests diagnostics", async () => {
+  const messages = [];
+  const lifecycle = { onWillAppear: async () => {}, onSystemDidWakeUp: async () => {} };
+  const plugin = new StreamDeckPlugin({ core: lifecycle, send: (message) => messages.push(message) });
+  const settings = { transportMode: "wsl", wslDistribution: "Ubuntu" };
+
+  await plugin.handleEvent({ event: "didReceiveGlobalSettings", payload: { settings } });
+  await plugin.handleEvent({
+    event: "sendToPlugin",
+    context: "property-inspector-id",
+    action: "com.marcinmaruszewski.ai-usage.codex.short-term",
+    payload: { event: "requestDiagnostics" },
+  });
+
+  assert.deepEqual(messages.at(-1).payload.settings, settings);
+});
+
 test("routes an explicit Codex window-keeping request and returns its separate diagnostics", async () => {
   const messages = [];
   let requests = 0;
@@ -120,6 +137,7 @@ test("routes an explicit Codex window-keeping request and returns its separate d
     windowActivity: "unknown",
     windowKeepingAction: "completed",
     observationComparison: "unchanged",
+    settings: {},
   });
 });
 

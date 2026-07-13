@@ -12,7 +12,8 @@ test("Property Inspector sends an explicitly scoped Codex request and renders it
     "#window-activity", "#window-keeping-action", "#observation-comparison",
     "#last-error", "#refresh-diagnostics", "#request-codex-window-keeping",
   ]) elements.set(selector, new FakeElement());
-  elements.get("#settings-form").elements = [];
+  const distribution = new FakeElement({ name: "wslDistribution" });
+  elements.get("#settings-form").elements = [distribution];
 
   const document = { querySelector: (selector) => elements.get(selector) };
   const context = vm.createContext({
@@ -66,6 +67,7 @@ test("Property Inspector sends an explicitly scoped Codex request and renders it
   socket.emit("message", { data: JSON.stringify({
     event: "sendToPropertyInspector",
     payload: {
+      settings: { wslDistribution: "Ubuntu" },
       windowActivity: "unknown",
       windowKeepingAction: "completed",
       observationComparison: "changed",
@@ -73,6 +75,7 @@ test("Property Inspector sends an explicitly scoped Codex request and renders it
     },
   }) });
 
+  assert.equal(distribution.value, "Ubuntu");
   assert.equal(elements.get("#window-activity").textContent, "Unknown");
   assert.equal(elements.get("#window-keeping-action").textContent, "Completed");
   assert.equal(elements.get("#observation-comparison").textContent, "Changed");
@@ -82,8 +85,10 @@ test("Property Inspector sends an explicitly scoped Codex request and renders it
 class FakeElement {
   #listeners = new Map();
 
-  constructor() {
+  constructor(properties = {}) {
+    Object.assign(this, properties);
     this.textContent = "";
+    this.value = "";
   }
 
   addEventListener(event, listener) {

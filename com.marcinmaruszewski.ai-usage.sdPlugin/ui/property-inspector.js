@@ -71,7 +71,10 @@
       try {
         const message = JSON.parse(data);
         if (message.event === "didReceiveGlobalSettings") writeSettings(message.payload?.settings || {});
-        if (message.event === "sendToPropertyInspector") showDiagnostics(message.payload);
+        if (message.event === "sendToPropertyInspector") {
+          writeSettings(message.payload?.settings);
+          showDiagnostics(message.payload);
+        }
       } catch { /* Ignore messages outside the inspector protocol. */ }
     });
   }

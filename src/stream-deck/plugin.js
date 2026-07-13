@@ -4,6 +4,7 @@ import { actionBinding, usageTileDataUrl } from "./usage-tile.js";
 export class StreamDeckPlugin {
   #contexts = new Map();
   #states = new Map();
+  #settings = {};
   #configuration = Promise.resolve();
 
   constructor({ core, send, configure = async () => {}, now = () => new Date(), providerMarks = {}, diagnosticLogger = { record: async () => {} } }) {
@@ -45,21 +46,22 @@ export class StreamDeckPlugin {
       return;
     }
     if (event?.event === "didReceiveGlobalSettings") {
+      this.#settings = event.payload?.settings ?? {};
       void this.diagnosticLogger.record("global-settings-event");
-      this.#configuration = this.#configuration.catch(() => undefined).then(() => this.configure(event.payload?.settings ?? {}));
+      this.#configuration = this.#configuration.catch(() => undefined).then(() => this.configure(this.#settings));
       await this.#configuration;
       return;
     }
     if (event?.event === "sendToPlugin" && event.payload?.event === "requestDiagnostics") {
       void this.diagnosticLogger.record("diagnostics-requested", { provider: actionBinding(event.action)?.provider });
-      this.send({ event: "sendToPropertyInspector", action: event.action, context: event.context, payload: this.diagnosticsFor(event.action) });
+      this.send({ event: "sendToPropertyInspector", action: event.action, context: event.context, payload: { ...this.diagnosticsFor(event.action), settings: this.#settings } });
       return;
     }
     if (event?.event === "sendToPlugin" && event.payload?.event === "requestCodexWindowKeeping") {
       if (typeof this.core.requestWindowKeeping !== "function") return;
       void this.diagnosticLogger.record("codex-window-keeping-requested", { provider: "codex" });
       await this.core.requestWindowKeeping("codex");
-      this.send({ event: "sendToPropertyInspector", action: event.action, context: event.context, payload: this.diagnosticsFor(event.action) });
+      this.send({ event: "sendToPropertyInspector", action: event.action, context: event.context, payload: { ...this.diagnosticsFor(event.action), settings: this.#settings } });
     }
   }
 
