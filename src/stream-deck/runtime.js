@@ -4,6 +4,7 @@ import { createProviderAdapter } from "../core/contracts.js";
 import { createPlatformProcessTransport } from "../core/process-transport.js";
 import { createClaudeUsageReader, createCodexUsageReader, UsageReaderError } from "../core/usage-readers.js";
 import { createCodexWindowKeeper } from "../core/codex-window-keeper.js";
+import { createDiagnosticLogger } from "./diagnostic-log.js";
 import { StreamDeckPlugin } from "./plugin.js";
 
 /** Starts the Node 24 Stream Deck websocket boundary without exposing CLI work to the Property Inspector. */
@@ -12,6 +13,7 @@ export function startStreamDeckPlugin({
   WebSocketImpl = globalThis.WebSocket,
   platform = process.platform,
   providerMarks = loadProviderMarks(),
+  diagnosticLogger = createDiagnosticLogger(),
 } = {}) {
   const launch = parseLaunchArguments(argv);
   if (!launch.port || !launch.pluginUUID || !launch.registerEvent) {
@@ -22,19 +24,35 @@ export function startStreamDeckPlugin({
   let plugin;
   const core = new PluginCore({
     providers: [],
-    ui: { publish: (state) => plugin.publish(state) },
+    ui: {
+      publish: (state) => {
+        void diagnosticLogger.record("provider-state", {
+          provider: state.provider,
+          operationalState: state.operationalState,
+          errorCode: state.errorCode,
+          windowCount: state.windows?.length ?? 0,
+        });
+        plugin.publish(state);
+      },
+    },
   });
   const socket = new WebSocketImpl(`ws://127.0.0.1:${launch.port}`);
   plugin = new StreamDeckPlugin({
     core,
     send: (message) => socket.send(JSON.stringify(message)),
-    configure: async (settings) => core.configure({ providers: await createConfiguredProviders(settings, { platform }), settings: coreSettings(settings) }),
+    configure: async (settings) => {
+      void diagnosticLogger.record("global-settings-received", diagnosticSettings(settings));
+      const providers = await createConfiguredProviders(settings, { platform, diagnosticLogger });
+      await core.configure({ providers, settings: coreSettings(settings) });
+    },
     providerMarks,
+    diagnosticLogger,
   });
 
   socket.addEventListener("open", () => {
     socket.send(JSON.stringify({ event: launch.registerEvent, uuid: launch.pluginUUID }));
     socket.send(JSON.stringify({ event: "getGlobalSettings", context: launch.pluginUUID }));
+    void diagnosticLogger.record("plugin-connected");
     core.start();
   });
   socket.addEventListener("message", (message) => {
@@ -48,9 +66,10 @@ export function startStreamDeckPlugin({
   return Object.freeze({ core, plugin, socket });
 }
 
-export async function createConfiguredProviders(settings = {}, { platform = process.platform } = {}) {
+export async function createConfiguredProviders(settings = {}, { platform = process.platform, diagnosticLogger = { record: async () => {} } } = {}) {
   try {
     const configurations = await resolveProviderTransportConfigurations(settings, { platform });
+    void diagnosticLogger.record("provider-transports-configured", diagnosticSettings(settings));
     const codexTransport = createPlatformProcessTransport({
       platform,
       ...configurations.codex,
@@ -78,11 +97,22 @@ export async function createConfiguredProviders(settings = {}, { platform = proc
       }),
     ];
   } catch {
+    void diagnosticLogger.record("provider-configuration-failed", { operationalState: "error", errorCode: "configuration-required" });
     return [
       createProviderAdapter({ id: "codex", usageReader: unavailableUsageReader() }),
       createProviderAdapter({ id: "claude", usageReader: unavailableUsageReader() }),
     ];
   }
+}
+
+function diagnosticSettings(settings) {
+  return {
+    transportMode: settings.transportMode,
+    hasWslDistribution: typeof settings.wslDistribution === "string" && settings.wslDistribution.length > 0,
+    hasCodexExecutable: typeof settings.codexExecutable === "string" && settings.codexExecutable.length > 0,
+    hasClaudeExecutable: typeof settings.claudeExecutable === "string" && settings.claudeExecutable.length > 0,
+    hasClaudeSnapshotPath: typeof settings.claudeSnapshotPath === "string" && settings.claudeSnapshotPath.length > 0,
+  };
 }
 
 export async function resolveTransportConfiguration(settings = {}, { platform = process.platform, discoverWsl = discoverWslDistribution } = {}) {

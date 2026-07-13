@@ -12,6 +12,7 @@ test("requests global settings with the plugin UUID as the Stream Deck context",
     argv: ["-port", "28123", "-pluginUUID", "plugin-id", "-registerEvent", "registerPlugin"],
     WebSocketImpl: FakePluginWebSocket,
     providerMarks: {},
+    diagnosticLogger: { record: async () => {} },
   });
   const socket = FakePluginWebSocket.instances.at(-1);
   socket.emit("open");
